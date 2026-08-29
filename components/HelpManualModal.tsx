@@ -7,10 +7,10 @@ interface HelpManualModalProps {
   onClose: () => void;
 }
 
-type ManualTab = "overview" | "matrix" | "playbook" | "forensics" | "shortcuts";
+type ManualTab = "how-it-works" | "threat-guide" | "faq";
 
 export function HelpManualModal({ isOpen, onClose }: HelpManualModalProps) {
-  const [activeTab, setActiveTab] = useState<ManualTab>("overview");
+  const [activeTab, setActiveTab] = useState<ManualTab>("how-it-works");
 
   // Close on Escape key
   useEffect(() => {
@@ -30,11 +30,9 @@ export function HelpManualModal({ isOpen, onClose }: HelpManualModalProps) {
   if (!isOpen) return null;
 
   const tabs: { id: ManualTab; label: string; icon: string }[] = [
-    { id: "overview", label: "MISSION BRIEF", icon: "terminal" },
-    { id: "matrix", label: "THREAT MATRIX", icon: "shield" },
-    { id: "forensics", label: "FORENSIC RULES", icon: "biotech" },
-    { id: "playbook", label: "DEFENSE PLAYBOOK", icon: "gavel" },
-    { id: "shortcuts", label: "TACTICAL KEYS", icon: "keyboard" },
+    { id: "how-it-works", label: "HOW IT WORKS", icon: "help" },
+    { id: "threat-guide", label: "STATUS GUIDE", icon: "shield" },
+    { id: "faq", label: "FAQS & TIPS", icon: "lightbulb" },
   ];
 
   return (
@@ -43,315 +41,192 @@ export function HelpManualModal({ isOpen, onClose }: HelpManualModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-surface border-border-width-thick border-on-background shadow-brutal-lg max-w-3xl w-full max-h-[90vh] flex flex-col relative overflow-hidden"
+        className="bg-surface border-border-width-thick border-on-background shadow-brutal-lg max-w-2xl w-full max-h-[90vh] flex flex-col relative overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header Banner */}
-        <div className="p-3.5 bg-primary-container text-on-primary-container border-b-4 border-on-background flex justify-between items-center select-none">
-          <div className="flex items-center gap-2.5 font-headline-md text-sm md:text-base uppercase tracking-wider">
-            <span className="material-symbols-outlined text-2xl animate-pulse">menu_book</span>
-            <span>FIELD MANUAL // AGENT_007 PROTOCOL</span>
-            <span className="hidden sm:inline-block text-[10px] bg-surface text-on-background border border-on-background px-2 py-0.5 font-data-mono font-bold">
-              UNCLASSIFIED OSINT
-            </span>
+        {/* Header Banner */}
+        <div className="p-4 bg-primary-container text-on-primary-container border-b-4 border-on-background flex justify-between items-center select-none">
+          <div className="flex items-center gap-2.5 font-headline-md text-base sm:text-lg uppercase tracking-wider">
+            <span className="material-symbols-outlined text-2xl">menu_book</span>
+            <span>QUICK GUIDE // HOW TO USE</span>
           </div>
           <button
             onClick={onClose}
             className="w-8 h-8 bg-surface text-on-background border-2 border-on-background shadow-brutal-xs flex items-center justify-center font-bold text-base hover:bg-error hover:text-white transition-colors active:translate-x-0.5 active:translate-y-0.5"
-            title="Close Manual (Esc)"
+            title="Close (Esc)"
           >
             ✕
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b-2 border-on-background bg-surface-container overflow-x-auto p-1.5 gap-1 select-none">
+        <div className="flex border-b-2 border-on-background bg-surface-container overflow-x-auto p-2 gap-2 select-none">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3 py-1.5 font-label-caps text-xs flex items-center gap-1.5 whitespace-nowrap transition-all border-2 ${
+                className={`px-3.5 py-2 font-label-caps text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all border-2 ${
                   isActive
-                    ? "bg-surface text-on-background border-on-background shadow-brutal-xs font-bold -rotate-0.5"
+                    ? "bg-surface text-on-background border-on-background shadow-brutal-xs font-black -rotate-0.5"
                     : "border-transparent text-on-surface-variant hover:bg-surface/50 hover:border-on-background/30"
                 }`}
               >
-                <span className="material-symbols-outlined text-base">{tab.icon}</span>
+                <span className="material-symbols-outlined text-lg">{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Tab Content Container */}
-        <div className="p-5 md:p-6 overflow-y-auto font-data-mono text-sm leading-relaxed flex-grow space-y-6">
-          {/* TAB 1: OVERVIEW */}
-          {activeTab === "overview" && (
-            <div className="space-y-5 animate-in fade-in">
-              <div className="bg-surface-container p-4 border-2 border-on-background shadow-brutal-xs -rotate-0.5">
-                <h3 className="font-headline-sm text-sm uppercase text-primary font-bold flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-lg">radar</span>
-                  Autonomous Brand Impersonation Hunting
-                </h3>
-                <p className="text-xs md:text-sm text-on-surface-variant">
-                  <strong>Domain Hunter</strong> is an autonomous cybersecurity investigation agent powered by <strong>TrueForge</strong> and <strong>GPT-OSS-120B</strong>. It proactively sweeps global public infrastructure, discovery engines, and threat lists to detect typosquatting, credential harvesting clones, and fake ecommerce storefronts targeting your brand.
+        {/* Tab Content */}
+        <div className="p-5 sm:p-6 overflow-y-auto font-body-lg text-sm leading-relaxed flex-grow space-y-4">
+          {/* TAB 1: HOW IT WORKS */}
+          {activeTab === "how-it-works" && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="bg-primary-container/20 border-2 border-primary p-3.5 shadow-brutal-xs">
+                <p className="font-bold text-on-background text-sm">
+                  Domain Hunter finds fake websites and spoofed domains pretending to be your brand. Here is the 3-step workflow:
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="font-headline-sm text-xs uppercase font-bold text-on-background tracking-wider">
-                  ⚡ 4-Stage Autonomous Pipeline:
+              {/* Step 1 */}
+              <div className="border-2 border-on-background p-4 bg-surface shadow-brutal-xs flex gap-3.5 items-start">
+                <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black shrink-0 text-sm">
+                  1
+                </div>
+                <div>
+                  <h4 className="font-headline-sm text-sm uppercase font-bold text-on-background mb-1">
+                    Enter Brand Name
+                  </h4>
+                  <p className="text-xs text-on-surface-variant font-data-mono leading-relaxed">
+                    Type your company or brand name (e.g., <em>ACME Corp</em>, <em>Stripe</em>, or <em>PayPal</em>) into the search bar on the dashboard and click <strong>Start Investigation</strong>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="border-2 border-on-background p-4 bg-surface shadow-brutal-xs flex gap-3.5 items-start">
+                <div className="w-8 h-8 rounded-full bg-secondary text-white flex items-center justify-center font-black shrink-0 text-sm">
+                  2
+                </div>
+                <div>
+                  <h4 className="font-headline-sm text-sm uppercase font-bold text-on-background mb-1">
+                    Watch the AI Agent Investigate
+                  </h4>
+                  <p className="text-xs text-on-surface-variant font-data-mono leading-relaxed">
+                    The agent discovers suspicious domains, probes DNS & live websites, checks security logs, and builds an evidence dossier in real time.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="border-2 border-on-background p-4 bg-surface shadow-brutal-xs flex gap-3.5 items-start">
+                <div className="w-8 h-8 rounded-full bg-retro-green text-on-background flex items-center justify-center font-black shrink-0 text-sm">
+                  3
+                </div>
+                <div>
+                  <h4 className="font-headline-sm text-sm uppercase font-bold text-on-background mb-1">
+                    Review Findings & Take Action
+                  </h4>
+                  <p className="text-xs text-on-surface-variant font-data-mono leading-relaxed">
+                    Review classified results, inspect the evidence dossier, and generate one-click legal takedown notices to send to domain registrars.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: STATUS GUIDE */}
+          {activeTab === "threat-guide" && (
+            <div className="space-y-3.5 animate-in fade-in">
+              <p className="text-xs text-on-surface-variant font-data-mono mb-2">
+                Every discovered domain is evaluated and assigned one of these simple threat badges:
+              </p>
+
+              {/* Badges */}
+              <div className="border-2 border-on-background p-3.5 bg-red-50 flex items-start gap-3">
+                <span className="bg-error text-white font-bold text-xs px-2.5 py-1 border border-on-background whitespace-nowrap shrink-0">
+                  LIKELY IMPERSONATION
+                </span>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  <strong>High Risk:</strong> Active website found mimicking your logo, login, or products to scam users. Immediate takedown recommended.
+                </p>
+              </div>
+
+              <div className="border-2 border-on-background p-3.5 bg-amber-50 flex items-start gap-3">
+                <span className="bg-retro-yellow text-on-background font-bold text-xs px-2.5 py-1 border border-on-background whitespace-nowrap shrink-0">
+                  SUSPICIOUS
+                </span>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  <strong>Medium Risk:</strong> Looks like a typosquatting domain or newly registered name with high resemblance. Keep an eye on it.
+                </p>
+              </div>
+
+              <div className="border-2 border-on-background p-3.5 bg-blue-50 flex items-start gap-3">
+                <span className="bg-tertiary-container text-on-tertiary-container font-bold text-xs px-2.5 py-1 border border-on-background whitespace-nowrap shrink-0">
+                  PARKED / INACTIVE
+                </span>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  <strong>Low Risk:</strong> Domain exists but the site is offline, returns an error, or is parked with ads. Not currently harming users.
+                </p>
+              </div>
+
+              <div className="border-2 border-on-background p-3.5 bg-emerald-50 flex items-start gap-3">
+                <span className="bg-retro-green text-on-background font-bold text-xs px-2.5 py-1 border border-on-background whitespace-nowrap shrink-0">
+                  LEGITIMATE
+                </span>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  <strong>Safe:</strong> Verified official brand website, official sub-domain, or authorized corporate partner.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: FAQS & TIPS */}
+          {activeTab === "faq" && (
+            <div className="space-y-3.5 animate-in fade-in">
+              <div className="border-2 border-on-background p-3.5 bg-surface shadow-brutal-xs">
+                <h4 className="font-headline-sm text-sm font-bold text-primary mb-1">
+                  ❓ Does the AI execute takedowns automatically?
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                    <div className="flex items-center gap-2 text-primary font-bold text-xs mb-1">
-                      <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px]">1</span>
-                      DOMAIN DISCOVERY
-                    </div>
-                    <p className="text-[11px] text-on-surface-variant">
-                      Queries Exa MCP & public search engines with targeted Boolean queries to unearth candidate domains.
-                    </p>
-                  </div>
-
-                  <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                    <div className="flex items-center gap-2 text-secondary font-bold text-xs mb-1">
-                      <span className="w-5 h-5 rounded-full bg-secondary text-white flex items-center justify-center text-[10px]">2</span>
-                      LIVE FORENSIC TRIAGE
-                    </div>
-                    <p className="text-[11px] text-on-surface-variant">
-                      Initiates live DNS resolution, HTTP status probes, and sandbox DOM crawling to capture current operational status.
-                    </p>
-                  </div>
-
-                  <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                    <div className="flex items-center gap-2 text-tertiary font-bold text-xs mb-1">
-                      <span className="w-5 h-5 rounded-full bg-tertiary text-white flex items-center justify-center text-[10px]">3</span>
-                      EVIDENCE CROSS-CHECK
-                    </div>
-                    <p className="text-[11px] text-on-surface-variant">
-                      Cross-references candidate signatures against PhishHunt, Bitdefender, MalwareTips, and Certificate Transparency logs.
-                    </p>
-                  </div>
-
-                  <div className="border-2 border-on-background p-3 bg-emerald-700 font-bold text-xs mb-1">
-                    <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">4</span>
-                    FINAL ASSESSMENT
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: THREAT MATRIX */}
-          {activeTab === "matrix" && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="border-b-2 border-on-background pb-2">
-                <h3 className="font-headline-sm text-sm uppercase font-bold text-on-background">
-                  Classification Taxonomy
-                </h3>
-                <p className="text-xs text-on-surface-variant">
-                  Standardized categories assigned based on empirical telemetry:
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  <strong>No.</strong> Domain Hunter uses a strict <em>Human-in-the-Loop</em> safety model. The agent only collects intelligence; you have the final authority to review and approve actions.
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <div className="border-2 border-on-background p-3 bg-red-50">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="bg-error text-white font-bold text-[10px] px-2 py-0.5 border border-on-background">
-                      LIKELY_IMPERSONATION
-                    </span>
-                    <span className="text-[11px] font-bold text-error">CRITICAL THREAT</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Domain is <strong>currently resolving and active</strong>, hosting stolen brand assets, phishing forms, or counterfeit ecommerce portals. Historical threat intel corroborates malicious intent.
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-amber-50">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="bg-retro-yellow text-on-background font-bold text-[10px] px-2 py-0.5 border border-on-background">
-                      PARKED_OR_INACTIVE
-                    </span>
-                    <span className="text-[11px] font-bold text-amber-700">DORMANT / PAST INTEL</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Domain returns 404, does not resolve (NXDOMAIN), is deployment-disabled, or is parked with registrar placeholders. Even if historical phishing reports exist, it is <strong>not currently active</strong>.
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-orange-50">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="bg-secondary-container text-on-secondary-container font-bold text-[10px] px-2 py-0.5 border border-on-background">
-                      SUSPICIOUS
-                    </span>
-                    <span className="text-[11px] font-bold text-secondary">ELEVATED RISK</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Domain shows suspicious typosquatting patterns, newly registered WHOIS data, or partial brand keyword collisions without definitive phishing payloads.
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-emerald-50">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="bg-retro-green text-on-background font-bold text-[10px] px-2 py-0.5 border border-on-background">
-                      LEGITIMATE
-                    </span>
-                    <span className="text-[11px] font-bold text-emerald-800">SAFE ASSET</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Domain is verified as an authorized corporate asset, regional affiliate, or official brand partner.
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-surface-container">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="bg-surface text-on-background font-bold text-[10px] px-2 py-0.5 border border-on-background">
-                      INCONCLUSIVE
-                    </span>
-                    <span className="text-[11px] font-bold text-on-surface-variant">UNVERIFIED</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant">
-                    Telemetry is insufficient or conflicting to make a definitive classification. Manual analyst review recommended.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: FORENSIC RULES */}
-          {activeTab === "forensics" && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="bg-surface border-2 border-on-background p-4 shadow-brutal-xs">
-                <h3 className="font-headline-sm text-sm uppercase text-primary font-bold mb-2 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-lg">policy</span>
-                  Evidence Integrity & Separation Rules
-                </h3>
-                <p className="text-xs text-on-surface-variant mb-3">
-                  To prevent false alarms and hallucinations, Domain Hunter enforces strict mathematical and forensic separation:
-                </p>
-
-                <div className="space-y-2.5 text-xs">
-                  <div className="p-2.5 bg-surface-container border border-on-background">
-                    <strong>1. Live Observations vs Historical Intel:</strong> Live crawl results (<code>current_observations</code>) and past intelligence reports (<code>historical_evidence</code>) are stored and evaluated separately.
-                  </div>
-                  <div className="p-2.5 bg-surface-container border border-on-background">
-                    <strong>2. No Historical Proof of Live Activity:</strong> A historical phishing record from 6 months ago does NOT make a dead/non-resolving domain currently malicious. It must be classified as <code>PARKED_OR_INACTIVE</code>.
-                  </div>
-                  <div className="p-2.5 bg-surface-container border border-on-background">
-                    <strong>3. Zero Synthetic Candidates:</strong> The agent is forbidden from guessing, inventing, or hallucinating candidate domains. All domains must originate from real search engine or threat feed telemetry.
-                  </div>
-                  <div className="p-2.5 bg-surface-container border border-on-background">
-                    <strong>4. Clean Output Telemetry:</strong> Internal model planning tokens and chain-of-thought tokens are stripped from user feeds in favor of structured operational telemetry.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: DEFENSE PLAYBOOK */}
-          {activeTab === "playbook" && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="border-b-2 border-on-background pb-2">
-                <h3 className="font-headline-sm text-sm uppercase font-bold text-on-background">
-                  Defensive Countermeasures & Human Authorization
-                </h3>
-                <p className="text-xs text-on-surface-variant">
-                  Standard actions generated in the investigation reports:
+              <div className="border-2 border-on-background p-3.5 bg-surface shadow-brutal-xs">
+                <h4 className="font-headline-sm text-sm font-bold text-primary mb-1">
+                  ❓ How do I send a takedown notice?
+                </h4>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  On the results page, click <strong>TAKEDOWN</strong> on any suspicious domain. A pre-filled abuse and DMCA notice will be generated ready to copy and send to the domain registrar.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                  <div className="font-bold text-primary mb-1 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-base">gavel</span>
-                    DMCA Takedown Notice
-                  </div>
-                  <p className="text-[11px] text-on-surface-variant">
-                    Generates a formal DMCA copyright and trademark infringement notice addressed to the hosting registrar and DNS provider.
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                  <div className="font-bold text-secondary mb-1 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-base">report</span>
-                    Registrar Abuse Report
-                  </div>
-                  <p className="text-[11px] text-on-surface-variant">
-                    Packages forensic screenshots, header proofs, and WHOIS records into standard abuse report templates (e.g. Namecheap, Cloudflare, GoDaddy).
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                  <div className="font-bold text-tertiary mb-1 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-base">block</span>
-                    Perimeter DNS Block
-                  </div>
-                  <p className="text-[11px] text-on-surface-variant">
-                    Recommends adding confirmed malicious domains to enterprise perimeter firewalls, EDR blocklists, and secure web gateways (SWG).
-                  </p>
-                </div>
-
-                <div className="border-2 border-on-background p-3 bg-surface shadow-brutal-xs">
-                  <div className="font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-base">visibility</span>
-                    DNS Watch-List Monitoring
-                  </div>
-                  <p className="text-[11px] text-on-surface-variant">
-                    Recommended for <code>PARKED_OR_INACTIVE</code> domains to alert security teams immediately if nameservers or A-records change.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-secondary-container border-2 border-on-background text-[11px] font-bold text-on-secondary-container flex items-center gap-2">
-                <span className="material-symbols-outlined text-lg">lock</span>
-                <span>CRITICAL: All takedown submissions and external block requests require explicit human analyst authorization.</span>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: KEYBOARD SHORTCUTS */}
-          {activeTab === "shortcuts" && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="border-b-2 border-on-background pb-2">
-                <h3 className="font-headline-sm text-sm uppercase font-bold text-on-background">
-                  Tactical Keyboard Shortcuts
-                </h3>
-                <p className="text-xs text-on-surface-variant">
-                  Quick keys for high-efficiency OSINT workflows:
+              <div className="border-2 border-on-background p-3.5 bg-surface shadow-brutal-xs">
+                <h4 className="font-headline-sm text-sm font-bold text-primary mb-1">
+                  ❓ How do I reset or start a fresh investigation?
+                </h4>
+                <p className="text-xs text-on-surface-variant font-data-mono">
+                  Click the <strong>+ NEW SCAN</strong> button in the sidebar anytime, or click the reset icon in the sidebar footer to clear past session data.
                 </p>
-              </div>
-
-              <div className="space-y-2">
-                {[
-                  { key: "ESC", action: "Close Help Manual or Active Modal" },
-                  { key: "ENTER", action: "Submit Brand Search on Dashboard" },
-                  { key: "+ / NEW SCAN", action: "Open Brand Hunt Launch Dialog" },
-                  { key: "RESET", action: "Purge Local Storage and Reset Session" },
-                ].map((s) => (
-                  <div key={s.key} className="flex justify-between items-center p-2.5 bg-surface border-2 border-on-background">
-                    <span className="font-bold text-xs">{s.action}</span>
-                    <kbd className="bg-primary-container text-on-primary-container px-2.5 py-1 border border-on-background shadow-brutal-xs text-xs font-bold">
-                      {s.key}
-                    </kbd>
-                  </div>
-                ))}
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer Action Bar */}
-        <div className="p-3 bg-surface border-t-2 border-on-background flex justify-between items-center select-none">
-          <div className="text-[11px] text-on-surface-variant font-label-caps">
-            SYSTEM VERSION: <strong className="text-on-background">v1.0.4-PROD</strong>
+        {/* Footer */}
+        <div className="p-3.5 bg-surface border-t-2 border-on-background flex justify-between items-center select-none">
+          <div className="text-xs text-on-surface-variant font-data-mono">
+            Press <kbd className="px-1.5 py-0.5 bg-surface-variant border border-on-background text-[11px] font-bold">Esc</kbd> anytime to close
           </div>
           <button
             onClick={onClose}
             className="bg-primary-container text-on-primary-container px-4 py-1.5 font-headline-sm text-xs uppercase border-2 border-on-background shadow-brutal-xs font-bold active:translate-x-0.5 active:translate-y-0.5 transition-all"
           >
-            ACKNOWLEDGE & CLOSE
+            GOT IT!
           </button>
         </div>
       </div>

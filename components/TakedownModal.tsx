@@ -24,7 +24,7 @@ OFFICIAL NOTICE OF BRAND IMPERSONATION & ILLEGAL PHISHING ACTIVITY
 ================================================================================
 DATE: ${timestamp}
 CASE ID: SEC-${domain.id.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}
-INVESTIGATING UNIT: Automated Cyber Defense Agent (Agent_007)
+INVESTIGATING UNIT: Automated Cyber Defense Agent (Rootless Agent)
 
 TO: Abuse & Legal Compliance Department
 REGISTRAR: ${domain.registrar}
@@ -55,7 +55,7 @@ authoritative trademark registry cross-referencing.
 
 SUBMITTED BY:
 Brand Security Response Team
-Agent_007 - Digital Investigation Division
+Rootless Agent - Digital Investigation Division
 ================================================================================`;
   };
 

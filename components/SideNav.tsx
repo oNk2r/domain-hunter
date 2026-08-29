@@ -75,17 +75,24 @@ export function SideNav({ onOpenNewScan, onOpenHelp }: SideNavProps) {
           </Link>
 
           {/* Investigator Profile */}
-          <div className="mt-2.5 flex items-center justify-center gap-3 bg-surface border-2 border-on-background p-2 shadow-brutal-xs -rotate-0.5">
-            <div className="relative">
-              <div className="w-9 h-9 rounded-full border-2 border-on-background bg-secondary text-white flex items-center justify-center shadow-brutal-xs overflow-hidden">
-                <span className="material-symbols-outlined text-xl">detective</span>
+          <div className="mt-3 flex items-center gap-3.5 bg-surface border-2 border-on-background p-2.5 shadow-brutal-sm -rotate-0.5">
+            <div className="relative shrink-0">
+              <div className="w-14 h-14 rounded-lg border-2 border-on-background bg-white p-1 flex items-center justify-center shadow-brutal-xs overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/assets/rootless.png"
+                  alt="Rootless Agent"
+                  className="w-full h-full object-contain"
+                />
               </div>
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${currentStatus.dot} border border-on-background animate-pulse`} />
+              <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full ${currentStatus.dot} border-2 border-on-background animate-pulse`} />
             </div>
-            <div className="text-left">
-              <div className="font-headline-md text-xs font-bold leading-tight">AGENT_007</div>
-              <div className={`font-label-caps text-[10px] font-bold tracking-wider flex items-center gap-1 ${currentStatus.text}`}>
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ${currentStatus.dot}`} />
+            <div className="text-left overflow-hidden">
+              <div className="font-headline-md text-sm font-black leading-tight text-on-background truncate">
+                Rootless Agent
+              </div>
+              <div className={`font-label-caps text-[10px] font-bold tracking-wider flex items-center gap-1.5 mt-1 ${currentStatus.text}`}>
+                <span className={`inline-block w-2 h-2 rounded-full ${currentStatus.dot}`} />
                 <span>{currentStatus.label}</span>
               </div>
             </div>

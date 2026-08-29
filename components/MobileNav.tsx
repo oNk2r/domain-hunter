@@ -21,9 +21,15 @@ export function MobileNav({ onOpenNewScan, onOpenHelp }: MobileNavProps) {
   return (
     <>
       {/* Top Mobile Bar */}
-      <header className="md:hidden flex justify-between items-center w-full px-4 py-3 bg-surface border-b-border-width-thick border-on-background shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] top-0 sticky z-40">
-        <Link href="/" className="font-headline-sm text-sm font-black text-primary border-2 border-on-background px-3 py-1 bg-secondary-container shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -rotate-1">
-          DOMAIN HUNTER
+      <header className="md:hidden flex justify-between items-center w-full px-4 py-2.5 bg-surface border-b-border-width-thick border-on-background shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] top-0 sticky z-40">
+        <Link href="/" className="flex items-center gap-2 font-headline-sm text-sm font-black text-primary border-2 border-on-background px-2.5 py-1 bg-secondary-container shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -rotate-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/assets/rootless.png"
+            alt="Rootless Agent"
+            className="w-6 h-6 object-contain rounded bg-white border border-on-background"
+          />
+          <span>DOMAIN HUNTER</span>
         </Link>
         <div className="flex items-center gap-2">
           <button

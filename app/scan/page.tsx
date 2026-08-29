@@ -41,7 +41,9 @@ function phaseToStep(phase: InvestigationPhase): number {
     case "evidence_review":
       return 3;
     case "final_assessment":
+      return 4;
     case "complete":
+      return 5; // All 5 steps completed
     case "error":
     case "cancelled":
       return 4;
@@ -185,7 +187,7 @@ function InvestigationProgressContent() {
   };
 
   const currentStep = phaseToStep(phase);
-  const displayBrand = (brand || "UNKNOWN").toUpperCase();
+  const displayBrand = brand ? brand.toUpperCase() : "";
   const isStreaming = isActive;
   const logStrings = logs.map((l) => l.text);
 
@@ -203,7 +205,7 @@ function InvestigationProgressContent() {
           <div className="inline-block bg-retro-yellow border-4 border-on-background py-2 px-6 transform -rotate-1 shadow-brutal">
             <h2 className="font-headline-lg text-2xl sm:text-3xl md:text-4xl uppercase text-on-background flex items-center gap-3">
               <span className="material-symbols-outlined text-3xl font-black">radar</span>
-              HUNTING FOR: [{displayBrand}]
+              {displayBrand ? `HUNTING FOR: [${displayBrand}]` : "TRY TO SCAN"}
             </h2>
           </div>
           <div className="bg-surface border-2 border-on-background px-3 py-1.5 shadow-brutal-xs font-data-mono text-[11px] flex items-center gap-2 rotate-0.5">
@@ -244,6 +246,37 @@ function InvestigationProgressContent() {
           </div>
         </div>
       </header>
+
+      {/* Quick Brand Search Bar when no brand is specified yet */}
+      {!displayBrand && phase === "idle" && (
+        <div className="mb-6 bg-surface border-4 border-on-background p-4 sm:p-5 shadow-brutal flex flex-col sm:flex-row items-stretch sm:items-center gap-3 animate-in fade-in">
+          <div className="flex-grow flex items-center bg-white border-2 border-on-background px-3 py-2.5">
+            <span className="material-symbols-outlined text-on-surface-variant mr-2">search</span>
+            <input
+              type="text"
+              placeholder="ENTER BRAND NAME (E.G. ACME CORP, STRIPE)..."
+              className="w-full bg-transparent border-none outline-none font-data-mono text-sm uppercase placeholder-on-surface-variant"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                  window.location.href = `/scan?brand=${encodeURIComponent(e.currentTarget.value.trim())}`;
+                }
+              }}
+            />
+          </div>
+          <button
+            onClick={(e) => {
+              const input = e.currentTarget.parentElement?.querySelector("input");
+              if (input && input.value.trim()) {
+                window.location.href = `/scan?brand=${encodeURIComponent(input.value.trim())}`;
+              }
+            }}
+            className="bg-primary-container text-on-primary-container font-headline-md text-sm uppercase px-6 py-3 border-2 border-on-background shadow-brutal-xs btn-brutal font-bold whitespace-nowrap flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-base">radar</span>
+            START SCAN
+          </button>
+        </div>
+      )}
 
       {/* Completion Banner with direct button */}
       {phase === "complete" && (
@@ -343,7 +376,7 @@ function InvestigationProgressContent() {
               TARGET BRAND
             </h4>
             <p className="font-data-mono text-sm text-tertiary font-bold truncate">
-              {displayBrand}
+              {displayBrand || "NO TARGET SELECTED"}
             </p>
             <div className="mt-2 text-[11px] font-data-mono text-on-surface-variant">
               SESSION: {investigation.sessionId?.slice(0, 16) || "connecting..."}
