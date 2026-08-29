@@ -311,7 +311,7 @@ export const PAST_ARCHIVES = [
     status: "TAKEDOWN DISPATCHED",
     date: "AUG 24, 2026",
     threatScore: 98,
-    resolvedBy: "AGENT_007",
+    resolvedBy: "ROOTLESS AGENT",
     findings: 18
   },
   {
@@ -321,7 +321,7 @@ export const PAST_ARCHIVES = [
     status: "DISMANTLED / OFFLINE",
     date: "AUG 22, 2026",
     threatScore: 95,
-    resolvedBy: "AGENT_007",
+    resolvedBy: "ROOTLESS AGENT",
     findings: 14
   },
   {
@@ -331,7 +331,7 @@ export const PAST_ARCHIVES = [
     status: "REGISTRAR SUSPENDED",
     date: "AUG 19, 2026",
     threatScore: 91,
-    resolvedBy: "AGENT_007",
+    resolvedBy: "ROOTLESS AGENT",
     findings: 9
   },
   {
@@ -341,7 +341,7 @@ export const PAST_ARCHIVES = [
     status: "BLOCKED VIA DNS",
     date: "AUG 15, 2026",
     threatScore: 96,
-    resolvedBy: "AGENT_007",
+    resolvedBy: "ROOTLESS AGENT",
     findings: 22
   }
 ];

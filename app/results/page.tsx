@@ -2,46 +2,24 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { INITIAL_CASE, InvestigationCase, InvestigatedDomain } from "@/lib/investigation-data";
 import type { InvestigationResult, DomainResult, DomainClassification } from "@/lib/use-investigation";
-import { TakedownModal } from "@/components/TakedownModal";
-
-type ViewMode = "real" | "demo";
 
 export default function InvestigationResultsPage() {
   // Real investigation results from TrueForge
   const [realResult, setRealResult] = useState<InvestigationResult | null>(null);
-  // Demo/legacy case data (fallback)
-  const [activeCase, setActiveCase] = useState<InvestigationCase>(INITIAL_CASE);
-  const [viewMode, setViewMode] = useState<ViewMode>("demo");
 
   const [filter, setFilter] = useState<"ALL" | "SUSPICIOUS" | "LEGITIMATE" | "LIKELY_IMPERSONATION" | "INCONCLUSIVE" | "PARKED_OR_INACTIVE">("ALL");
   const [sortBy, setSortBy] = useState<"RISK" | "CONFIDENCE" | "NAME">("RISK");
-  const [selectedDomainForTakedown, setSelectedDomainForTakedown] = useState<InvestigatedDomain | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // Try loading real investigation results first
       const realStored = localStorage.getItem("investigation_result");
       if (realStored) {
         try {
           const parsed: InvestigationResult = JSON.parse(realStored);
           setRealResult(parsed);
-          setViewMode("real");
-          return;
         } catch (err) {
           console.error("Failed to parse investigation result", err);
-        }
-      }
-
-      // Fallback to demo case data
-      const stored = localStorage.getItem("active_case");
-      if (stored) {
-        try {
-          setActiveCase(JSON.parse(stored));
-          setViewMode("demo");
-        } catch (err) {
-          console.error("Failed to load active case", err);
         }
       }
     }
@@ -49,7 +27,7 @@ export default function InvestigationResultsPage() {
 
   // ── Real Results View ──────────────────────────────────────────────
 
-  if (viewMode === "real" && realResult) {
+  if (realResult) {
     return (
       <RealResultsView
         result={realResult}
@@ -61,24 +39,7 @@ export default function InvestigationResultsPage() {
     );
   }
 
-  // ── Demo/Legacy View (unchanged from original) ────────────────────
-
-  const handleSelectDomain = (domain: InvestigatedDomain) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("selected_domain_id", domain.id);
-    }
-  };
-
-  let displayedDomains = activeCase.domains.filter((d) => {
-    if (filter === "ALL") return true;
-    return d.status === filter;
-  });
-
-  displayedDomains = [...displayedDomains].sort((a, b) => {
-    if (sortBy === "RISK") return b.phishingScore - a.phishingScore;
-    if (sortBy === "CONFIDENCE") return b.confidence - a.confidence;
-    return a.domainName.localeCompare(b.domainName);
-  });
+  // ── No Real Results: Empty State ──────────────────────────────────
 
   return (
     <div className="flex-1 p-4 md:p-8 relative overflow-x-hidden">
@@ -88,220 +49,26 @@ export default function InvestigationResultsPage() {
         <h1 className="font-headline-xl text-4xl sm:text-5xl uppercase text-on-background relative z-10 inline-block bg-surface px-4 py-2 border-4 border-on-background shadow-brutal -rotate-0.5">
           SCAN RESULTS
         </h1>
-        <p className="font-data-mono text-sm mt-3 text-on-surface-variant flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary text-base">target</span>
-          TARGET_ID: <span className="font-bold text-on-background">{activeCase.targetId}</span>
-          <span className="text-on-surface-variant/50">•</span>
-        </p>
-
-        {/* Live Scan Suggestion Banner */}
-        <div className="mt-4 bg-retro-yellow/30 border-2 border-on-background p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-brutal-xs">
-          <div className="flex items-center gap-2 text-xs font-data-mono text-on-background">
-            <span className="material-symbols-outlined text-primary text-base">info</span>
-            <span>Viewing archived reference data. To launch a live TrueForge AI brand hunt:</span>
-          </div>
-          <Link
-            href="/"
-            className="px-3 py-1.5 bg-primary-container text-on-primary-container font-label-caps text-xs border-2 border-on-background shadow-brutal-xs btn-brutal font-bold whitespace-nowrap"
-          >
-            LAUNCH LIVE SCAN
-          </Link>
-        </div>
       </header>
 
-      {/* Top Stats Bento Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <div
-          onClick={() => setFilter("ALL")}
-          className={`bg-surface border-border-width-thick border-on-background p-6 shadow-brutal rotate-1 relative cursor-pointer hover:scale-[1.02] transition-transform ${
-            filter === "ALL" ? "ring-4 ring-primary" : ""
-          }`}
+      {/* Empty State */}
+      <div className="bg-surface border-4 border-on-background p-12 shadow-brutal text-center max-w-2xl mx-auto mt-8">
+        <span className="material-symbols-outlined text-7xl text-on-surface-variant mb-4 block">search_off</span>
+        <div className="inline-block bg-retro-yellow border-2 border-on-background px-4 py-1 font-label-caps text-xs font-black mb-4 rotate-1">
+          NO RESULTS YET
+        </div>
+        <h2 className="font-headline-md text-2xl uppercase mb-3">No Investigation Results Found</h2>
+        <p className="font-data-mono text-xs text-on-surface-variant max-w-md mx-auto mb-8">
+          Run a live brand investigation to see results here. Enter a brand name on the dashboard to start.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-primary-container text-on-primary-container font-label-caps text-sm border-2 border-on-background shadow-brutal btn-brutal font-bold uppercase"
         >
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-secondary-container border-2 border-on-background flex items-center justify-center font-bold text-xs">
-            #
-          </div>
-          <h3 className="font-label-caps text-xs text-on-surface-variant mb-2 uppercase font-bold">
-            Total Scanned
-          </h3>
-          <p className="font-headline-lg text-3xl sm:text-4xl font-extrabold">
-            {activeCase.stats.totalFound} <span className="text-tertiary text-xl font-normal">Domains</span>
-          </p>
-          <div className="mt-4 h-2 w-full bg-inverse-on-surface border-2 border-on-background">
-            <div className="h-full bg-on-background w-[100%]" />
-          </div>
-        </div>
-        <div className="bg-primary-container text-on-primary-container border-border-width-thick border-on-background p-6 shadow-brutal -rotate-1 relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform">
-          <h3 className="font-label-caps text-xs mb-2 uppercase border-b-2 border-on-primary-container inline-block font-bold">
-            Action Req
-          </h3>
-          <p className="font-headline-lg text-3xl sm:text-4xl font-extrabold">
-            {activeCase.stats.actionRequired} <span className="text-surface text-xl font-normal">Investigate</span>
-          </p>
-          <div className="mt-4 text-xs font-data-mono flex items-center gap-1 font-bold">
-            <span className="material-symbols-outlined text-sm">warning</span>
-            HUMAN DISPATCH NEEDED
-          </div>
-        </div>
-        <div className={`bg-surface border-border-width-thick border-on-background p-6 shadow-brutal rotate-2 flex flex-col justify-between cursor-pointer hover:scale-[1.02] transition-transform`}>
-          <h3 className="font-label-caps text-xs text-on-surface-variant mb-2 uppercase flex items-center justify-between font-bold">
-            Likely Legit
-            <span className="material-symbols-outlined text-retro-green font-bold">verified</span>
-          </h3>
-          <p className="font-headline-lg text-3xl sm:text-4xl font-extrabold text-on-background">
-            {activeCase.stats.likelyLegit}
-          </p>
-          <span className="text-[11px] font-data-mono text-on-surface-variant">Validated brand apex/subs</span>
-        </div>
-        <div className={`bg-retro-yellow border-border-width-thick border-on-background p-6 shadow-brutal -rotate-2 relative cursor-pointer hover:scale-[1.02] transition-transform`}>
-          <div className="absolute -top-2 -right-2 w-12 h-6 bg-surface-variant rotate-45 border border-on-background" />
-          <h3 className="font-label-caps text-xs text-on-background mb-2 uppercase font-black tracking-wider">
-            HIGH ALERT
-          </h3>
-          <p className="font-headline-lg text-3xl sm:text-4xl text-error font-black">
-            {activeCase.stats.suspicious} <span className="text-on-background text-xl font-bold">Suspicious</span>
-          </p>
-          <span className="text-[11px] font-data-mono text-on-background/80 font-bold">90%+ Threat Confidence</span>
-        </div>
-      </section>
-
-      {/* Main List Area */}
-      <section className="relative">
-        <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 border-b-border-width-thick border-on-background pb-3 gap-4">
-          <h2 className="font-headline-md text-2xl uppercase flex items-center gap-3">
-            <span className="material-symbols-outlined bg-on-background text-surface p-1.5 text-xl">
-              view_list
-            </span>
-            INVESTIGATION QUEUE ({displayedDomains.length})
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex border-2 border-on-background bg-surface shadow-brutal-sm">
-              {(["ALL", "SUSPICIOUS", "LEGITIMATE", "INVESTIGATING"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f as typeof filter)}
-                  className={`px-2.5 py-1 font-label-caps text-[10px] font-bold transition-colors ${
-                    filter === f
-                      ? "bg-secondary text-on-secondary"
-                      : "text-on-surface-variant hover:bg-surface-variant"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => {
-                if (sortBy === "RISK") setSortBy("CONFIDENCE");
-                else if (sortBy === "CONFIDENCE") setSortBy("NAME");
-                else setSortBy("RISK");
-              }}
-              className="px-3 py-1 border-2 border-on-background bg-surface font-label-caps text-xs hover:bg-surface-variant shadow-brutal-sm btn-brutal transition-all flex items-center gap-1 font-bold"
-            >
-              <span className="material-symbols-outlined text-sm">sort</span>
-              SORT: {sortBy}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
-          {displayedDomains.map((domain, idx) => {
-            const isSuspicious = domain.status === "SUSPICIOUS";
-            const isLegit = domain.status === "LEGITIMATE";
-            const isScanning = domain.status === "INVESTIGATING";
-
-            return (
-              <article
-                key={domain.id}
-                className={`bg-surface border-border-width-thick border-on-background p-6 shadow-brutal transition-transform hover:scale-[1.01] ${
-                  idx % 2 === 0 ? "-rotate-0.5" : "rotate-0.5"
-                } ${isLegit ? "bg-surface-container" : ""}`}
-              >
-                <div className="flex justify-between items-start mb-4">
-                  {isSuspicious && (
-                    <div className="bg-retro-yellow border-2 border-on-background px-3 py-1 font-label-caps text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rotate-1 inline-flex items-center gap-1">
-                      <span className="material-symbols-outlined text-base">warning</span>
-                      SUSPICIOUS
-                    </div>
-                  )}
-                  {isLegit && (
-                    <div className="bg-retro-green border-2 border-on-background px-3 py-1 font-label-caps text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -rotate-1 inline-flex items-center gap-1 text-on-background">
-                      <span className="material-symbols-outlined text-base">verified_user</span>
-                      LEGITIMATE
-                    </div>
-                  )}
-                  {isScanning && (
-                    <div className="bg-surface-variant border-2 border-on-background px-3 py-1 font-label-caps text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rotate-1 inline-flex items-center gap-1 text-on-background">
-                      <span className="material-symbols-outlined text-base animate-spin">sync</span>
-                      INVESTIGATING
-                    </div>
-                  )}
-                  <div className="text-right">
-                    <span className="font-data-mono text-[11px] text-on-surface-variant block font-bold">CONFIDENCE</span>
-                    <span className={`font-headline-md text-2xl font-black ${isSuspicious ? "text-error" : isLegit ? "text-on-surface" : "text-tertiary"}`}>
-                      {domain.confidence}%
-                    </span>
-                  </div>
-                </div>
-                <h3 className={`font-headline-md text-xl sm:text-2xl mb-2 break-all ${isSuspicious ? "underline decoration-4 decoration-primary-container underline-offset-4" : ""}`}>
-                  {domain.domainName}
-                </h3>
-                {domain.highlight && (
-                  <p className="text-xs font-data-mono text-on-surface-variant mb-4 bg-surface-variant/60 p-2 border border-on-background/20">
-                    {domain.highlight}
-                  </p>
-                )}
-                <div className="flex items-center gap-4 my-4 py-3 border-y-2 border-dashed border-on-surface-variant/40">
-                  <div className="flex-1">
-                    <span className="font-data-mono text-on-surface-variant block text-[10px] font-bold">IP ORIGIN</span>
-                    <span className="font-data-mono text-xs block font-bold truncate">{domain.ip}</span>
-                  </div>
-                  <div className="w-0.5 h-7 bg-on-surface-variant/30" />
-                  <div className="flex-1">
-                    <span className="font-data-mono text-on-surface-variant block text-[10px] font-bold">REG DATE</span>
-                    <span className="font-data-mono text-xs block font-bold">{domain.regDate}</span>
-                  </div>
-                  <div className="w-0.5 h-7 bg-on-surface-variant/30" />
-                  <div className="flex-1 text-center">
-                    <span className="font-data-mono text-on-surface-variant block text-[10px] font-bold">EVIDENCE</span>
-                    <div className="font-headline-sm text-sm bg-inverse-surface text-inverse-on-surface inline-block px-2 py-0.5 rounded-sm">
-                      {domain.evidenceCount} ITEMS
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <Link
-                    href="/evidence"
-                    onClick={() => handleSelectDomain(domain)}
-                    className="flex-1 bg-primary text-on-primary border-border-width-thick border-on-background p-3 font-headline-sm text-sm uppercase shadow-brutal btn-brutal transition-all flex items-center justify-center gap-2 text-center"
-                  >
-                    VIEW EVIDENCE CORKBOARD
-                    <span className="material-symbols-outlined text-lg">arrow_forward</span>
-                  </Link>
-                  {isSuspicious && (
-                    <button
-                      onClick={() => setSelectedDomainForTakedown(domain)}
-                      className="bg-retro-yellow text-on-background border-2 border-on-background px-4 py-3 font-headline-sm text-sm uppercase shadow-brutal btn-brutal flex items-center gap-1 font-bold"
-                      title="Quick Takedown Notice"
-                    >
-                      <span className="material-symbols-outlined text-base">gavel</span>
-                      TAKEDOWN
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {selectedDomainForTakedown && (
-        <TakedownModal
-          isOpen={true}
-          onClose={() => setSelectedDomainForTakedown(null)}
-          domain={selectedDomainForTakedown}
-          brandName={activeCase.brandName}
-        />
-      )}
+          <span className="material-symbols-outlined text-base">radar</span>
+          START INVESTIGATION
+        </Link>
+      </div>
     </div>
   );
 }
