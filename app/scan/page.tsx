@@ -142,6 +142,16 @@ function InvestigationProgressContent() {
     return () => clearInterval(interval);
   }, [isActive, startedAt]);
 
+  // Sync investigation phase to localStorage so SideNav status stays accurate
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (phase === "idle") {
+      localStorage.removeItem("investigation_phase");
+    } else {
+      localStorage.setItem("investigation_phase", phase);
+    }
+  }, [phase]);
+
   // When investigation completes, save results to localStorage for /results page and auto-redirect
   useEffect(() => {
     if (phase === "complete" && result) {
@@ -152,6 +162,7 @@ function InvestigationProgressContent() {
       return () => clearTimeout(timer);
     }
   }, [phase, result, router]);
+
 
   const handlePauseResume = useCallback(() => {
     if (isActive) {

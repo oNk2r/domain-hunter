@@ -71,6 +71,10 @@ export interface RawTrueForgeEvent {
 export interface PendingApproval {
   toolName: string;
   sessionId: string;
+  /** thread_id from tool.response_required — needed to submit user.tool_approval turn */
+  threadId?: string;
+  /** tool_call_id from tool.response_required — needed to submit user.tool_approval turn */
+  toolCallId?: string;
   description?: string;
   receivedAt: string;
 }
@@ -717,6 +721,31 @@ export function useInvestigation() {
           break;
         }
 
+        // TrueForge fires `tool.response_required` (verified from SDK types:
+        // ToolResponseRequiredEvent = { type: "tool.response_required", id, thread_id, tool_calls: [{id, source_event_id}] })
+        // This is the event that pauses the agent and requires a user.tool_approval response.
+        case "tool.response_required": {
+          const ev = event as Record<string, unknown>;
+          const threadId = String(ev.thread_id || "");
+          const toolCallsRaw = ev.tool_calls as Array<Record<string, unknown>> | undefined;
+          const toolCallId = toolCallsRaw?.[0]?.id ? String(toolCallsRaw[0].id) : "";
+          const toolName = toolCallId || "unknown_tool";
+          addLog(`> ⛔ AGENT PAUSED — HUMAN APPROVAL REQUIRED FOR: ${toolName.toUpperCase()}`, "phase");
+          setState((prev) => ({
+            ...prev,
+            pendingApproval: {
+              toolName,
+              sessionId: prev.sessionId || "",
+              threadId: threadId || undefined,
+              toolCallId: toolCallId || undefined,
+              receivedAt: now(),
+            },
+          }));
+          break;
+        }
+
+        // Keep handling tool.approval_required as a fallback in case
+        // some TrueForge versions use this event name.
         case "tool.approval_required": {
           const toolName = String((event as Record<string, unknown>).name || "unknown");
           const approvalDesc = String((event as Record<string, unknown>).description || "");
@@ -890,20 +919,23 @@ export function useInvestigation() {
 
   /** Called when the user clicks Authorize in the ApprovalGateModal. */
   const approveAction = useCallback(async () => {
-    const { sessionId } = state;
+    const { sessionId, pendingApproval } = state;
     setState((prev) => ({
       ...prev,
       pendingApproval: null,
       logs: [...prev.logs, makeLog("> ✅ HUMAN AUTHORIZED — AGENT RESUMING", "phase")],
     }));
-    // Attempt to resume the TrueForge session via the approval endpoint.
-    // TrueForge exposes approval via the session/turns approval API.
     if (sessionId) {
       try {
         await fetch("/api/investigate/approve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, decision: "approve" }),
+          body: JSON.stringify({
+            sessionId,
+            decision: "allow",
+            threadId: pendingApproval?.threadId,
+            toolCallId: pendingApproval?.toolCallId,
+          }),
         });
       } catch {
         // Best-effort — SSE stream may continue regardless
@@ -925,13 +957,12 @@ export function useInvestigation() {
         await fetch("/api/investigate/approve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, decision: "reject" }),
+          body: JSON.stringify({ sessionId, decision: "deny", reason: "User rejected" }),
         });
       } catch {
         // Best-effort cancel
       }
     }
-    // Also abort the SSE stream
     if (abortRef.current) {
       abortRef.current.abort();
     }
