@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-bricolage: 'Bricolage Grotesque', sans-serif;
+  --font-hanken: 'Hanken Grotesk', sans-serif;
+  --font-jetbrains-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-hanken), sans-serif;
+  color: #1b1c1a;
+  background-color: #fbf9f5;
+  overflow-x: hidden;
+}
+
+/* Graph paper pattern background */
+.bg-graph-paper {
+  background-color: #fbf9f5;
+  background-image: 
+    linear-gradient(to right, #dbdad6 1px, transparent 1px),
+    linear-gradient(to bottom, #dbdad6 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Dark mode graph paper pattern */
+.dark .bg-graph-paper {
+  background-color: #1b1c1a;
+  background-image: 
+    linear-gradient(to right, #30312e 1px, transparent 1px),
+    linear-gradient(to bottom, #30312e 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Corkboard radial texture */
+.corkboard-bg {
+  background-color: #e4e2de;
+  background-image: radial-gradient(#8d7168 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+/* Wavy ribbon graphic */
+.wavy-ribbon {
+  background: #fe95fe;
+  border-top: 4px solid #1b1c1a;
+  border-bottom: 4px solid #1b1c1a;
+  box-shadow: 6px 6px 0px 0px rgba(0,0,0,1);
+}
+
+/* Starburst sticker */
+.starburst {
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.starburst-12 {
+  clip-path: polygon(
+    50% 0%, 63% 20%, 85% 15%, 80% 38%, 100% 50%, 80% 62%, 85% 85%, 63% 80%, 50% 100%, 37% 80%, 15% 85%, 20% 62%, 0% 50%, 20% 38%, 15% 15%, 37% 20%
+  );
+}
+
+/* Caution tape stripes */
+.caution-tape {
+  background: repeating-linear-gradient(
+    45deg,
+    #fe95fe,
+    #fe95fe 12px,
+    #1b1c1a 12px,
+    #1b1c1a 24px
+  );
+}
+
+.caution-tape-yellow {
+  background: repeating-linear-gradient(
+    45deg,
+    #ffea00,
+    #ffea00 12px,
+    #1b1c1a 12px,
+    #1b1c1a 24px
+  );
+}
+
+/* Brutalist Shadows */
+.shadow-brutal {
+  box-shadow: 6px 6px 0px 0px #000000;
+}
+
+.shadow-brutal-sm {
+  box-shadow: 4px 4px 0px 0px #000000;
+}
+
+.shadow-brutal-lg {
+  box-shadow: 8px 8px 0px 0px #000000;
+}
+
+/* Interactive Brutalist Buttons */
+.btn-brutal {
+  box-shadow: 6px 6px 0px 0px #000000;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.btn-brutal:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 7px 7px 0px 0px #000000;
+}
+
+.btn-brutal:active {
+  transform: translate(4px, 4px) !important;
+  box-shadow: 2px 2px 0px 0px #000000 !important;
+}
+
+.btn-brutal-sm {
+  box-shadow: 4px 4px 0px 0px #000000;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.btn-brutal-sm:active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 2px 2px 0px 0px #000000 !important;
+}
+
+/* Board Game Path animation */
+.board-path {
+  stroke-dasharray: 20, 10;
+  animation: movePath 2s linear infinite;
+}
+
+@keyframes movePath {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+
+.detective-move {
+  animation: bounceAlong 3s ease-in-out infinite alternate;
+}
+
+@keyframes bounceAlong {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Scanline effect for Live Log CRT */
+.crt-scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.35) 50%
+  );
+  background-size: 100% 4px;
+}
+
+/* Material symbols utility */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}

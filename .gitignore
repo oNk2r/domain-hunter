@@ -1,0 +1,41 @@
+# ── Secrets ────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Next.js build output ────────────────────────────────────
+.next/
+out/
+build/
+
+# ── TrueForge bundles (large generated files) ───────────────
+tf.js
+tf.html
+trueforge-ui.js
+trueforge-openapi.json
+
+# ── Test artifacts ──────────────────────────────────────────
+test-results/
+playwright-report/
+coverage/
+
+# ── OS / Editor ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# ── TypeScript build cache ──────────────────────────────────
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ── Misc ────────────────────────────────────────────────────
+*.log
+npm-debug.log*
