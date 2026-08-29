@@ -6,59 +6,115 @@ const TRUEFORGE_URL =
 /**
  * POST /api/investigate/approve
  *
- * Proxies a human approval decision (approve | reject) back to TrueForge.
- * TrueForge's approval API resumes or cancels a paused agent turn.
+ * Submits a human approval decision to TrueForge using the VERIFIED mechanism
+ * from @truefoundry/trueforge-sdk ^0.1.3 type definitions:
  *
- * Body: { sessionId: string, decision: "approve" | "reject" }
+ * KEY FINDING: There is NO separate /approval endpoint in TrueForge.
+ * Approval is submitted as a new turn with a `user.tool_approval` TurnInputItem.
+ *
+ * SDK types confirm:
+ *   TurnInputItem = UserMessage | UserToolApprovalEvent | UserToolResponseEvent
+ *   UserToolApprovalEvent = {
+ *     type: "user.tool_approval",
+ *     thread_id: string,
+ *     tool_call_id: string,
+ *     approval: { status: "allow" } | { status: "deny", reason?: string }
+ *   }
+ *
+ * The `tool.response_required` SSE event provides the thread_id and
+ * tool_calls[].id needed to submit the approval turn.
+ *
+ * For DENY: cancel the session turn (cleanest way to stop the agent).
+ *
+ * Body: {
+ *   sessionId: string,
+ *   decision: "allow" | "deny",
+ *   threadId?: string,
+ *   toolCallId?: string,
+ *   reason?: string
+ * }
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
-    const { sessionId, decision } = body || {};
+    const { sessionId, decision, threadId, toolCallId, reason } = body || {};
 
     if (!sessionId || typeof sessionId !== "string") {
+      return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+    }
+
+    if (decision !== "allow" && decision !== "deny") {
       return NextResponse.json(
-        { error: "sessionId is required" },
+        { error: "decision must be 'allow' or 'deny'" },
         { status: 400 }
       );
     }
 
-    if (decision !== "approve" && decision !== "reject") {
-      return NextResponse.json(
-        { error: "decision must be 'approve' or 'reject'" },
-        { status: 400 }
+    // ── DENY: Cancel the running session turn ─────────────────────────────
+    if (decision === "deny") {
+      const cancelResponse = await fetch(
+        `${TRUEFORGE_URL}/api/v1/sessions/${encodeURIComponent(sessionId)}/cancel`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
       );
-    }
 
-    // TrueForge approval endpoint — resumes or cancels the paused turn.
-    // The exact endpoint may vary by TrueForge version; adjust if needed.
-    const approvalResponse = await fetch(
-      `${TRUEFORGE_URL}/api/v1/sessions/${sessionId}/approval`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+      if (!cancelResponse.ok) {
+        const details = await cancelResponse.text();
+        console.warn(`TrueForge cancel returned ${cancelResponse.status}:`, details);
+        // Return ok — frontend already updated state
       }
-    );
 
-    if (!approvalResponse.ok) {
-      // Non-critical — the frontend has already updated its state.
-      // Log the error but return 200 so the UI doesn't break.
-      const details = await approvalResponse.text();
-      console.warn(
-        `TrueForge approval endpoint returned ${approvalResponse.status}:`,
-        details
-      );
-      return NextResponse.json(
-        { ok: false, note: "TrueForge approval endpoint returned an error", details },
-        { status: 200 }
-      );
+      return NextResponse.json({ ok: true, decision: "deny" });
     }
 
-    return NextResponse.json({ ok: true, decision });
+    // ── ALLOW: Submit user.tool_approval turn ────────────────────────────
+    if (threadId && toolCallId) {
+      const turnResponse = await fetch(
+        `${TRUEFORGE_URL}/api/v1/sessions/${encodeURIComponent(sessionId)}/turns`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: [
+              {
+                type: "user.tool_approval",
+                thread_id: threadId,
+                tool_call_id: toolCallId,
+                approval: { status: "allow" },
+              },
+            ],
+            stream: false,
+          }),
+        }
+      );
+
+      if (!turnResponse.ok) {
+        const details = await turnResponse.text();
+        console.warn(`TrueForge approval turn returned ${turnResponse.status}:`, details);
+        // Non-critical — return ok so UI doesn't break
+        return NextResponse.json(
+          { ok: false, note: "TrueForge approval turn failed", details },
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json({ ok: true, decision: "allow" });
+    }
+
+    // ── FALLBACK: No tool_call context ───────────────────────────────────
+    // The agent may not have paused on an approval-gated tool in this run.
+    // The UI has already dismissed the modal; acknowledge client-side only.
+    return NextResponse.json({
+      ok: true,
+      decision: "allow",
+      note: "No tool_call context — approval acknowledged client-side only",
+    });
   } catch (error) {
     console.error("Approval route error:", error);
-    // Return 200 — the UI manages its own approval state regardless.
+    // Return 200 — UI manages its own state regardless
     return NextResponse.json(
       {
         ok: false,

@@ -13,16 +13,34 @@ export function SideNav({ onOpenNewScan, onOpenHelp }: SideNavProps) {
   const pathname = usePathname();
   const [status, setStatus] = useState<"IDLE" | "INVESTIGATING" | "COMPLETED" | "FAILED">("IDLE");
 
-  // Dynamically determine agent status based on route
   useEffect(() => {
-    if (pathname === "/scan") {
-      setStatus("INVESTIGATING");
-    } else if (pathname === "/results") {
-      setStatus("COMPLETED");
-    } else {
+    function computeStatus() {
+      // Primary signal: phase written to localStorage by the scan page
+      if (typeof window !== "undefined") {
+        const phase = localStorage.getItem("investigation_phase");
+        if (phase === "complete") { setStatus("COMPLETED"); return; }
+        if (phase === "error") { setStatus("FAILED"); return; }
+        if (
+          phase === "starting" ||
+          phase === "discovery" ||
+          phase === "triage" ||
+          phase === "public_research" ||
+          phase === "agent_investigation" ||
+          phase === "evidence_review" ||
+          phase === "final_assessment"
+        ) { setStatus("INVESTIGATING"); return; }
+      }
+      // Fallback: infer from route alone when no phase signal is present
+      if (pathname === "/results") { setStatus("COMPLETED"); return; }
       setStatus("IDLE");
     }
+
+    computeStatus();
+    // Poll every 2s to catch phase changes written by the scan page
+    const interval = setInterval(computeStatus, 2000);
+    return () => clearInterval(interval);
   }, [pathname]);
+
 
   const navItems = [
     { label: "DASHBOARD", href: "/", icon: "dashboard" },
@@ -46,9 +64,8 @@ export function SideNav({ onOpenNewScan, onOpenHelp }: SideNavProps) {
   const currentStatus = getStatusColor();
 
   return (
-    <aside className="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container border-r-border-width-thick border-on-background shadow-[6px_0px_0px_0px_rgba(0,0,0,1)] p-4 z-50 select-none justify-between overflow-hidden">
-      {/* Top Container: Brand + Avatar + Navigation */}
-      <div className="flex flex-col gap-4">
+    <aside className="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container border-r-border-width-thick border-on-background shadow-[6px_0px_0px_0px_rgba(0,0,0,1)] px-4 pt-4 pb-3 z-50 select-none justify-between overflow-y-auto">
+      <div className="flex flex-col gap-3">
         {/* Brand Header */}
         <div className="text-center pb-3 border-b-2 border-on-background">
           <Link href="/" className="inline-block group">
@@ -108,7 +125,7 @@ export function SideNav({ onOpenNewScan, onOpenHelp }: SideNavProps) {
       </div>
 
       {/* Bottom Container: Live Agent Card + New Scan + Help Manual */}
-      <div className="flex flex-col gap-3 pt-2">
+      <div className="flex flex-col gap-2 pt-1">
         {/* Compact Live Agent Status Card */}
         <div className="p-2.5 bg-surface border-2 border-on-background shadow-brutal-xs font-data-mono text-[10px] text-left">
           <div className="flex items-center justify-between font-bold text-primary mb-1">
