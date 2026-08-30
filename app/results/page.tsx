@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import type { InvestigationResult, DomainResult, DomainClassification, EvidenceSourceItem } from "@/lib/use-investigation";
+import {
+  type InvestigationResult,
+  type DomainResult,
+  type DomainClassification,
+  type EvidenceSourceItem,
+  extractUniqueToolNamesFromEvents,
+  extractStageTelemetryFromEvents,
+} from "@/lib/use-investigation";
 
 export default function InvestigationResultsPage() {
   // Real investigation results from TrueForge
@@ -88,11 +95,23 @@ function classificationBadge(classification: DomainClassification) {
 
 /**
  * Transparent, deterministic risk score calculation (0 - 100).
- * Based strictly on classification enum + assessment confidence + verified evidence indicators.
+ * Strictly requires a valid numeric confidence between 0 and 100.
+ * If confidence is missing/invalid, returns null (unavailable) — never defaults to arbitrary numbers.
  */
-function computeDeterministicRiskScore(domain: DomainResult): { score: number; level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "MINIMAL" } {
+function computeDeterministicRiskScore(domain: DomainResult): { score: number; level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "MINIMAL" } | null {
+  if (
+    domain.confidence === null ||
+    domain.confidence === undefined ||
+    typeof domain.confidence !== "number" ||
+    isNaN(domain.confidence) ||
+    domain.confidence < 0 ||
+    domain.confidence > 100
+  ) {
+    return null;
+  }
+
+  const conf = domain.confidence;
   let base = 0;
-  const conf = domain.confidence ?? 70;
 
   switch (domain.classification) {
     case "LIKELY_IMPERSONATION":
@@ -160,15 +179,23 @@ function RealResultsView({
 
   displayed = [...displayed].sort((a, b) => {
     if (sortBy === "RISK") {
-      const scoreA = computeDeterministicRiskScore(a).score;
-      const scoreB = computeDeterministicRiskScore(b).score;
-      return scoreB - scoreA;
+      const riskA = computeDeterministicRiskScore(a);
+      const riskB = computeDeterministicRiskScore(b);
+      const scoreA = riskA !== null ? riskA.score : -1;
+      const scoreB = riskB !== null ? riskB.score : -1;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return a.domain.localeCompare(b.domain);
     }
-    if (sortBy === "CONFIDENCE") return (b.confidence || 0) - (a.confidence || 0);
+    if (sortBy === "CONFIDENCE") {
+      const confA = a.confidence !== null && !isNaN(a.confidence) ? a.confidence : -1;
+      const confB = b.confidence !== null && !isNaN(b.confidence) ? b.confidence : -1;
+      if (confA !== confB) return confB - confA;
+      return a.domain.localeCompare(b.domain);
+    }
     return a.domain.localeCompare(b.domain);
   });
 
-  // Dynamic 5 classification counters — EXACT enum matching, never bundling PARKED_OR_INACTIVE into INCONCLUSIVE
+  // Dynamic 5 classification counters + Total Candidates (Reconciled)
   const totalCandidates = result.domains.length;
   const likelyImpersonationCount = result.domains.filter((d) => d.classification === "LIKELY_IMPERSONATION").length;
   const suspiciousOnlyCount = result.domains.filter((d) => d.classification === "SUSPICIOUS").length;
@@ -214,80 +241,94 @@ function RealResultsView({
         </div>
       </header>
 
-      {/* Top Bento Stats Grid — 5 Dynamic Classification Counters (REQUIREMENT 1) */}
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      {/* Top Bento Stats Grid — All 5 Classification Counters + CANDIDATES (Reconciled) */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-8">
         {/* 1. CANDIDATES */}
         <div
           onClick={() => setFilter("ALL")}
-          className={`bg-surface border-4 border-on-background p-4 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
+          className={`bg-surface border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
             filter === "ALL" ? "ring-4 ring-primary" : ""
           }`}
         >
           <span className="font-label-caps text-[10px] text-on-surface-variant font-bold block uppercase">
             CANDIDATES
           </span>
-          <p className="font-headline-lg text-3xl font-black mt-1">{totalCandidates}</p>
-          <span className="text-[10px] font-data-mono text-on-surface-variant">Total discovered</span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1">{totalCandidates}</p>
+          <span className="text-[9px] font-data-mono text-on-surface-variant">Total discovered</span>
         </div>
 
         {/* 2. LIKELY IMPERSONATION */}
         <div
           onClick={() => setFilter("LIKELY_IMPERSONATION")}
-          className={`bg-error text-white border-4 border-on-background p-4 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
+          className={`bg-error text-white border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
             filter === "LIKELY_IMPERSONATION" ? "ring-4 ring-on-background" : ""
           }`}
         >
           <span className="font-label-caps text-[10px] text-white/90 font-bold block uppercase">
             LIKELY IMPERSONATION
           </span>
-          <p className="font-headline-lg text-3xl font-black mt-1">{likelyImpersonationCount}</p>
-          <span className="text-[10px] font-data-mono text-white/80">Active mimicry</span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1">{likelyImpersonationCount}</p>
+          <span className="text-[9px] font-data-mono text-white/80">Active mimicry</span>
         </div>
 
         {/* 3. SUSPICIOUS */}
         <div
           onClick={() => setFilter("SUSPICIOUS")}
-          className={`bg-retro-yellow text-on-background border-4 border-on-background p-4 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
+          className={`bg-retro-yellow text-on-background border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
             filter === "SUSPICIOUS" ? "ring-4 ring-on-background" : ""
           }`}
         >
           <span className="font-label-caps text-[10px] text-on-background/80 font-bold block uppercase">
             SUSPICIOUS
           </span>
-          <p className="font-headline-lg text-3xl font-black mt-1 text-error">{suspiciousOnlyCount}</p>
-          <span className="text-[10px] font-data-mono text-on-background/70">Potential risk</span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1 text-error">{suspiciousOnlyCount}</p>
+          <span className="text-[9px] font-data-mono text-on-background/70">Potential risk</span>
         </div>
 
         {/* 4. INCONCLUSIVE (Strictly INCONCLUSIVE only) */}
         <div
           onClick={() => setFilter("INCONCLUSIVE")}
-          className={`bg-surface-container border-4 border-on-background p-4 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
+          className={`bg-surface-container border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
             filter === "INCONCLUSIVE" ? "ring-4 ring-primary" : ""
           }`}
         >
           <span className="font-label-caps text-[10px] text-on-surface-variant font-bold block uppercase">
             INCONCLUSIVE
           </span>
-          <p className="font-headline-lg text-3xl font-black mt-1">{inconclusiveOnlyCount}</p>
-          <span className="text-[10px] font-data-mono text-on-surface-variant">Insufficient data</span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1">{inconclusiveOnlyCount}</p>
+          <span className="text-[9px] font-data-mono text-on-surface-variant">Insufficient data</span>
         </div>
 
         {/* 5. PARKED / INACTIVE (Separate Dedicated Counter) */}
         <div
           onClick={() => setFilter("PARKED_OR_INACTIVE")}
-          className={`bg-tertiary-container text-on-tertiary-container border-4 border-on-background p-4 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform col-span-2 sm:col-span-1 ${
+          className={`bg-tertiary-container text-on-tertiary-container border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
             filter === "PARKED_OR_INACTIVE" ? "ring-4 ring-primary" : ""
           }`}
         >
           <span className="font-label-caps text-[10px] text-on-tertiary-container/80 font-bold block uppercase">
             PARKED / INACTIVE
           </span>
-          <p className="font-headline-lg text-3xl font-black mt-1">{parkedOrInactiveCount}</p>
-          <span className="text-[10px] font-data-mono text-on-tertiary-container/90">Dormant / No content</span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1">{parkedOrInactiveCount}</p>
+          <span className="text-[9px] font-data-mono text-on-tertiary-container/90">Dormant / Inactive</span>
+        </div>
+
+        {/* 6. LEGITIMATE */}
+        <div
+          onClick={() => setFilter("LEGITIMATE")}
+          className={`bg-retro-green text-on-background border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
+            filter === "LEGITIMATE" ? "ring-4 ring-on-background" : ""
+          }`}
+        >
+          <span className="font-label-caps text-[10px] text-on-background/80 font-bold block uppercase">
+            LEGITIMATE
+          </span>
+          <p className="font-headline-lg text-2xl sm:text-3xl font-black mt-1">{legitimateCount}</p>
+          <span className="text-[9px] font-data-mono text-on-background/70">Verified official</span>
         </div>
       </section>
 
-      {/* Investigation Timeline & Telemetry Section (REQUIREMENT 2) */}
+      {/* Investigation Timeline & Telemetry Section (Qodo Findings 1, 3, 4) */}
       <InvestigationTimelineSection
         result={result}
         showDetails={showTimelineDetails}
@@ -391,7 +432,7 @@ function RealResultsView({
         </div>
       )}
 
-      {/* Result Cards Grid (REQUIREMENTS 3, 4, 5) */}
+      {/* Result Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
         {displayed.map((domain, idx) => (
           <RealDomainCard key={`${domain.domain}-${idx}`} domain={domain} idx={idx} />
@@ -401,7 +442,7 @@ function RealResultsView({
   );
 }
 
-// ── Investigation Timeline Component (REQUIREMENT 2) ──────────────────
+// ── Investigation Timeline Component (Qodo Findings 1, 3, 4) ─────────────
 
 function InvestigationTimelineSection({
   result,
@@ -415,90 +456,84 @@ function InvestigationTimelineSection({
   const totalCandidates = result.domains.length;
   const totalSourcesCount = result.domains.reduce((acc, d) => acc + d.evidenceSources.length, 0);
 
-  // Extract tools used from events / logs if present
-  const toolsUsedSet = new Set<string>();
-  if (result.events && Array.isArray(result.events)) {
-    for (const ev of result.events) {
-      if (ev.type === "model.message" && ev.data && typeof ev.data === "object") {
-        const dataObj = ev.data as Record<string, unknown>;
-        if (Array.isArray(dataObj.toolCalls)) {
-          for (const tc of dataObj.toolCalls) {
-            if (typeof tc === "object" && tc !== null) {
-              const name = (tc as Record<string, unknown>).name || ((tc as Record<string, unknown>).function as Record<string, unknown>)?.name;
-              if (name) toolsUsedSet.add(String(name));
-            }
-          }
-        }
-      }
-    }
-  }
-  if (result.logs && Array.isArray(result.logs)) {
+  // Extract explicit stage telemetry from recorded events
+  const stageTelemetry = extractStageTelemetryFromEvents(result.events);
+  const eventTools = stageTelemetry.uniqueTools;
+  const hasGenuineToolTelemetry = eventTools.length > 0;
+
+  // Telemetry is verified ONLY when genuine tool-call telemetry exists in recorded events
+  const isTelemetryVerified = Boolean(hasGenuineToolTelemetry && result.parseSucceeded);
+
+  // Optional legacy log tools inspection (strictly labeled, never drives verification)
+  const logTools: string[] = [];
+  if (!hasGenuineToolTelemetry && result.logs && Array.isArray(result.logs)) {
     for (const log of result.logs) {
-      if (log.text.includes("web_search_exa")) toolsUsedSet.add("web_search_exa");
-      if (log.text.includes("web_fetch_exa")) toolsUsedSet.add("web_fetch_exa");
-      if (log.text.includes("domain-discovery")) toolsUsedSet.add("domain-discovery");
-      if (log.text.includes("domain-triage")) toolsUsedSet.add("domain-triage");
-      if (log.text.includes("evidence-reviewer")) toolsUsedSet.add("evidence-reviewer");
+      const textLower = log.text.toLowerCase();
+      if (textLower.includes("web_search_exa") && !logTools.includes("web_search_exa")) logTools.push("web_search_exa");
+      if (textLower.includes("web_fetch_exa") && !logTools.includes("web_fetch_exa")) logTools.push("web_fetch_exa");
+      if (textLower.includes("domain-discovery") && !logTools.includes("domain-discovery")) logTools.push("domain-discovery");
+      if (textLower.includes("domain-triage") && !logTools.includes("domain-triage")) logTools.push("domain-triage");
+      if (textLower.includes("evidence-reviewer") && !logTools.includes("evidence-reviewer")) logTools.push("evidence-reviewer");
     }
   }
 
-  // Default fallback if no raw events were recorded in legacy session
-  if (toolsUsedSet.size === 0) {
-    toolsUsedSet.add("web_search_exa");
-    toolsUsedSet.add("web_fetch_exa");
-  }
+  const toolsDisplay = hasGenuineToolTelemetry
+    ? eventTools.join(", ")
+    : (logTools.length > 0 ? `${logTools.join(", ")} (LOGS ONLY - UNVERIFIED)` : "UNKNOWN / UNAVAILABLE");
 
-  const toolsList = Array.from(toolsUsedSet);
-
-  // Derive genuine milestone steps from investigation state
-  const milestones = [
+  const milestones: {
+    title: string;
+    detail: string;
+    status: "completed" | "unavailable";
+    tool: string;
+  }[] = [
     {
       title: "Investigation started",
-      detail: `Session ${result.sessionId || "TF-AGENT"} initialized with brand target "${result.brand.toUpperCase()}".`,
-      status: "completed",
-      tool: "TrueForge Runtime",
+      detail: result.sessionId ? `Session ${result.sessionId} initialized for brand "${result.brand.toUpperCase()}".` : "Session initialization unrecorded.",
+      status: result.sessionId ? "completed" : "unavailable",
+      tool: result.sessionId ? "TrueForge Runtime" : "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Domain discovery",
-      detail: `Discovered ${totalCandidates} candidate domain(s) associated with target brand.`,
-      status: "completed",
-      tool: toolsList.includes("web_search_exa") ? "web_search_exa" : "search",
+      detail: stageTelemetry.discovery.proven ? `Identified ${totalCandidates} candidate domain(s) for brand analysis.` : "Discovery stage telemetry unrecorded.",
+      status: stageTelemetry.discovery.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.discovery.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Candidate domains discovered",
-      detail: `${totalCandidates} domain name(s) identified for forensic analysis.`,
-      status: "completed",
-      tool: "discovery",
+      detail: stageTelemetry.discovery.proven && totalCandidates > 0 ? `${totalCandidates} domain name(s) queued for live inspection.` : "Domain discovery telemetry unrecorded.",
+      status: stageTelemetry.discovery.proven && totalCandidates > 0 ? "completed" : "unavailable",
+      tool: stageTelemetry.discovery.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Live domain triage",
-      detail: `Live HTTP inspections and content triage completed across candidate domains.`,
-      status: "completed",
-      tool: toolsList.includes("web_fetch_exa") ? "web_fetch_exa" : "HTTP Fetch",
+      detail: stageTelemetry.triage.proven ? `Live triage and content inspection conducted on candidates.` : "Live triage stage telemetry unrecorded.",
+      status: stageTelemetry.triage.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.triage.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Historical evidence collected",
-      detail: `${totalSourcesCount} threat intelligence and historical source reference(s) analyzed.`,
-      status: "completed",
-      tool: "Threat Intel / Exa",
+      detail: stageTelemetry.historicalIntel.proven && totalSourcesCount > 0 ? `${totalSourcesCount} evidence source reference(s) analyzed.` : "Historical evidence stage telemetry unrecorded.",
+      status: stageTelemetry.historicalIntel.proven && totalSourcesCount > 0 ? "completed" : "unavailable",
+      tool: stageTelemetry.historicalIntel.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Evidence review",
-      detail: `Cross-source evidence verification and contradictory signal analysis completed.`,
-      status: "completed",
-      tool: "evidence-reviewer",
+      detail: stageTelemetry.evidenceReview.proven ? `Forensic review and classification validation completed.` : "Evidence review stage telemetry unrecorded.",
+      status: stageTelemetry.evidenceReview.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.evidenceReview.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Classification complete",
-      detail: `All ${totalCandidates} candidates structured, classified, and sealed with confidence ratings.`,
-      status: "completed",
-      tool: "TrueForge Final Dossier",
+      detail: result.parseSucceeded && totalCandidates > 0 ? `All ${totalCandidates} candidate domain(s) structured and classified.` : "Classification unrecorded.",
+      status: result.parseSucceeded && totalCandidates > 0 ? "completed" : "unavailable",
+      tool: hasGenuineToolTelemetry ? "TrueForge Agent" : "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Human review required",
-      detail: `Findings sealed. Zero autonomous takedowns executed. Analyst approval required.`,
+      detail: "Findings sealed. Zero automated external actions taken.",
       status: "completed",
-      tool: "Human-in-the-Loop Gate",
+      tool: "Human Safety Gate",
     },
   ];
 
@@ -512,10 +547,17 @@ function InvestigationTimelineSection({
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 font-data-mono text-[11px] bg-secondary-container text-on-secondary-container px-2.5 py-1 border border-on-background font-bold">
-            <span className="material-symbols-outlined text-sm text-emerald-700">bolt</span>
-            <span>TELEMETRY VERIFIED</span>
-          </div>
+          {isTelemetryVerified ? (
+            <div className="flex items-center gap-1.5 font-data-mono text-[11px] bg-secondary-container text-on-secondary-container px-2.5 py-1 border border-on-background font-bold">
+              <span className="material-symbols-outlined text-sm text-emerald-700">bolt</span>
+              <span>TELEMETRY VERIFIED</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 font-data-mono text-[11px] bg-surface-variant text-on-surface-variant px-2.5 py-1 border border-on-background font-bold">
+              <span className="material-symbols-outlined text-sm text-on-surface-variant">info</span>
+              <span>TELEMETRY: UNAVAILABLE</span>
+            </div>
+          )}
           <button
             onClick={onToggleDetails}
             className="text-xs font-data-mono text-primary underline hover:text-primary-variant font-bold"
@@ -527,16 +569,24 @@ function InvestigationTimelineSection({
 
       {showDetails && (
         <div className="mt-4 space-y-4 animate-in fade-in">
-          {/* Milestone checklist */}
+          {/* Milestone checklist (Qodo Finding 3: Reflects actual telemetry status) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {milestones.map((m, idx) => (
               <div
                 key={idx}
-                className="bg-surface-variant/40 border-2 border-on-background/40 p-2.5 flex flex-col justify-between"
+                className={`border-2 p-2.5 flex flex-col justify-between ${
+                  m.status === "completed"
+                    ? "bg-surface-variant/40 border-on-background/40"
+                    : "bg-surface-variant/20 border-on-background/20 opacity-80"
+                }`}
               >
                 <div>
                   <div className="flex items-center gap-1.5 font-data-mono text-xs font-black text-on-background">
-                    <span className="material-symbols-outlined text-retro-green text-sm font-bold">check_circle</span>
+                    {m.status === "completed" ? (
+                      <span className="material-symbols-outlined text-retro-green text-sm font-bold">check_circle</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-on-surface-variant text-sm font-bold">help_outline</span>
+                    )}
                     <span>{m.title}</span>
                   </div>
                   <p className="font-data-mono text-[10px] text-on-surface-variant mt-1 leading-snug">
@@ -545,7 +595,7 @@ function InvestigationTimelineSection({
                 </div>
                 <div className="mt-2 pt-1 border-t border-on-surface-variant/20 flex items-center justify-between text-[9px] font-data-mono text-on-surface-variant/80">
                   <span className="uppercase text-primary font-bold">TOOL:</span>
-                  <span className="truncate max-w-[120px] bg-surface px-1 border border-on-background/30 font-bold">
+                  <span className="truncate max-w-[140px] bg-surface px-1 border border-on-background/30 font-bold">
                     {m.tool}
                   </span>
                 </div>
@@ -553,11 +603,11 @@ function InvestigationTimelineSection({
             ))}
           </div>
 
-          {/* Operational Telemetry Summary */}
+          {/* Operational Telemetry Summary (Qodo Finding 1) */}
           <div className="bg-inverse-surface text-inverse-on-surface p-3 border-2 border-on-background font-data-mono text-xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4 flex-wrap">
               <span>
-                <strong className="text-retro-yellow">TOOLS USED:</strong> {toolsList.join(", ")}
+                <strong className="text-retro-yellow">TOOLS RECORDED:</strong> {toolsDisplay}
               </span>
               <span>•</span>
               <span>
@@ -569,8 +619,10 @@ function InvestigationTimelineSection({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-retro-green animate-pulse" />
-              <span className="text-[10px] uppercase font-bold text-retro-green">EXECUTION SEALED</span>
+              <span className={`w-2 h-2 rounded-full ${isTelemetryVerified ? "bg-retro-green animate-pulse" : "bg-neutral-500"}`} />
+              <span className={`text-[10px] uppercase font-bold ${isTelemetryVerified ? "text-retro-green" : "text-neutral-400"}`}>
+                {isTelemetryVerified ? "EXECUTION SEALED" : "TELEMETRY: UNAVAILABLE"}
+              </span>
             </div>
           </div>
         </div>
@@ -579,30 +631,21 @@ function InvestigationTimelineSection({
   );
 }
 
-// ── Domain Card Component (REQUIREMENTS 3, 4, 5, 6) ───────────────────
+// ── Domain Card Component (Qodo Findings 2, 4, 5) ──────────────────────
 
 function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) {
   const badge = classificationBadge(domain.classification);
   const risk = computeDeterministicRiskScore(domain);
 
-  // Check if any genuine snapshot image URL exists in evidenceSources or observations
-  let snapshotUrl: string | null = null;
-  for (const src of domain.evidenceSources) {
-    if (typeof src === "object" && src?.url && /\.(png|jpg|jpeg|webp|svg)/i.test(src.url)) {
-      snapshotUrl = src.url;
-      break;
-    }
-  }
+  // Derive per-domain provenance strictly from actual recorded data (Qodo Finding 2: Never infer Live Inspection from observations)
+  const discoveryTool = domain.discoveryTool || "UNKNOWN / UNAVAILABLE";
+  const liveTriageMethod = domain.triageMethod || "UNKNOWN / UNAVAILABLE";
 
-  // Derive discovery tool and live observation summary for provenance chain
-  const discoveryTool = "web_search_exa";
-  const liveTriageMethod = domain.currentObservations.length > 0
-    ? `web_fetch_exa (${domain.currentObservations.length} observation${domain.currentObservations.length > 1 ? "s" : ""})`
-    : "web_fetch_exa / HTTP (Inactive or unreachable)";
-  
   const historicalSourceSummary = domain.evidenceSources.length > 0
-    ? domain.evidenceSources.map(s => typeof s === "object" ? s.name : s).slice(0, 2).join(", ")
-    : (domain.historicalEvidence.length > 0 ? "Threat Intel / Public DNS" : "Public Registry & Passive DNS");
+    ? domain.evidenceSources.map(s => (typeof s === "object" ? s.name : s)).slice(0, 2).join(", ")
+    : (domain.historicalEvidence.length > 0
+        ? `${domain.historicalEvidence.length} intelligence report(s)`
+        : "UNKNOWN / UNAVAILABLE");
 
   const riskBadgeStyles: Record<string, { bg: string; text: string }> = {
     CRITICAL: { bg: "bg-error", text: "text-white" },
@@ -611,7 +654,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
     LOW: { bg: "bg-tertiary-container", text: "text-on-tertiary-container" },
     MINIMAL: { bg: "bg-retro-green", text: "text-on-background" },
   };
-  const currentRiskBadge = riskBadgeStyles[risk.level] || riskBadgeStyles.LOW;
+  const currentRiskBadge = risk ? (riskBadgeStyles[risk.level] || riskBadgeStyles.LOW) : { bg: "bg-surface-variant", text: "text-on-surface-variant" };
 
   return (
     <article
@@ -628,19 +671,19 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
           </div>
 
           <div className="flex items-center gap-3 text-right">
-            {/* Risk Score (REQUIREMENT 5) */}
+            {/* Risk Score (Qodo Finding 4: Strictly unavailable if confidence missing) */}
             <div className="border-2 border-on-background bg-surface px-2.5 py-1 text-center shadow-brutal-xs">
               <span className="font-data-mono text-[9px] text-on-surface-variant block font-bold uppercase">
                 RISK SCORE
               </span>
               <div className="flex items-baseline justify-center gap-1">
                 <span className="font-headline-md text-xl font-black text-on-background">
-                  {risk.score}
+                  {risk !== null ? risk.score : "N/A"}
                 </span>
-                <span className="font-data-mono text-[9px] text-on-surface-variant">/100</span>
+                {risk !== null && <span className="font-data-mono text-[9px] text-on-surface-variant">/100</span>}
               </div>
               <span className={`text-[8px] font-label-caps font-black px-1 border border-on-background ${currentRiskBadge.bg} ${currentRiskBadge.text} block mt-0.5`}>
-                {risk.level}
+                {risk !== null ? risk.level : "UNAVAILABLE"}
               </span>
             </div>
 
@@ -664,7 +707,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
           {domain.domain}
         </h3>
 
-        {/* EVIDENCE CHAIN / PROVENANCE (REQUIREMENT 3) */}
+        {/* EVIDENCE CHAIN / PROVENANCE (Qodo Finding 2 & 3) */}
         <div className="mb-4 bg-surface-container border-2 border-on-background p-3 shadow-brutal-xs">
           <div className="flex items-center gap-1.5 mb-2 pb-1 border-b border-on-background/20 text-on-background font-label-caps text-[11px] font-black uppercase">
             <span className="material-symbols-outlined text-sm text-primary">account_tree</span>
@@ -673,7 +716,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-data-mono text-[10px]">
             <div>
               <span className="text-on-surface-variant font-bold block uppercase">DISCOVERED VIA</span>
-              <span className="text-primary font-bold">→ {discoveryTool}</span>
+              <span className="text-primary font-bold truncate block">→ {discoveryTool}</span>
             </div>
             <div>
               <span className="text-on-surface-variant font-bold block uppercase">LIVE TRIAGE</span>
@@ -693,7 +736,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
             </div>
             <div>
               <span className="text-on-surface-variant font-bold block uppercase">RISK SCORE</span>
-              <span className="font-bold text-error">→ {risk.score} / 100</span>
+              <span className="font-bold text-error">→ {risk !== null ? `${risk.score} / 100` : "UNAVAILABLE"}</span>
             </div>
           </div>
         </div>
@@ -708,9 +751,9 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
           </div>
         )}
 
-        {/* Evidence Sections (REQUIREMENT 4) */}
+        {/* Evidence Sections */}
         <div className="space-y-4 mb-4">
-          {/* Current Observations (What happened when domain was checked RIGHT NOW) */}
+          {/* Current Observations */}
           <div className="bg-primary-container/20 border-l-4 border-primary p-3">
             <div className="flex items-center justify-between mb-1.5">
               <h4 className="font-label-caps text-[10px] text-primary font-bold flex items-center gap-1">
@@ -737,7 +780,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
             )}
           </div>
 
-          {/* Historical Evidence (What previous threat intelligence reported) */}
+          {/* Historical Evidence */}
           {domain.historicalEvidence.length > 0 && (
             <div className="bg-tertiary-container/20 border-l-4 border-tertiary p-3">
               <div className="flex items-center justify-between mb-1.5">
@@ -760,7 +803,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
             </div>
           )}
 
-          {/* Contradictory Evidence (Only displayed when actual contradictory evidence exists) */}
+          {/* Contradictory Evidence */}
           {domain.contradictoryEvidence.length > 0 && (
             <div className="bg-error-container/20 border-l-4 border-error p-3">
               <h4 className="font-label-caps text-[10px] text-error font-bold mb-1.5 flex items-center gap-1">
@@ -778,21 +821,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
             </div>
           )}
 
-          {/* Optional Visual Evidence / Site Snapshot (REQUIREMENT 6) */}
-          {snapshotUrl && (
-            <div className="p-3 border-2 border-on-background bg-surface">
-              <h4 className="font-label-caps text-[10px] text-on-surface-variant font-bold mb-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-sm">image</span>
-                SITE SNAPSHOT
-              </h4>
-              <div className="border border-on-background/40 max-h-48 overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={snapshotUrl} alt={`Snapshot for ${domain.domain}`} className="w-full object-cover" />
-              </div>
-            </div>
-          )}
-
-          {/* Evidence Sources */}
+          {/* Evidence Sources (Safe user-clickable links only, no automatic remote images) */}
           {domain.evidenceSources.length > 0 && (
             <div className="p-3 border border-on-background/20 bg-surface">
               <h4 className="font-label-caps text-[10px] text-on-surface-variant font-bold mb-1.5 flex items-center gap-1">

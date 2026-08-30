@@ -49,6 +49,8 @@ export interface DomainResult {
   reasoning: string;
   recommendedAction: string;
   humanReviewRequired: boolean;
+  discoveryTool?: string;
+  triageMethod?: string;
 }
 
 /** The full investigation result */
@@ -348,13 +350,20 @@ function extractDomainsFromJson(payload: unknown): DomainResult[] {
       const classification = normalizeClassification(String(c.classification || c.status || ""));
 
       let confidence: number | null = null;
-      if (typeof c.confidence === "number") {
-        confidence = c.confidence <= 1 ? Math.round(c.confidence * 100) : Math.round(c.confidence);
+      if (typeof c.confidence === "number" && !isNaN(c.confidence)) {
+        if (c.confidence >= 0 && c.confidence <= 1) {
+          confidence = Math.round(c.confidence * 100);
+        } else if (c.confidence > 1 && c.confidence <= 100) {
+          confidence = Math.round(c.confidence);
+        }
       }
 
       const rawAction = String(c.recommended_action || c.recommendedAction || c.action || "");
       const recommendedAction = sanitizeActionLanguage(rawAction);
       const needsHumanReview = detectHumanReviewNeeded(c, classification);
+
+      const discoveryTool = typeof c.discovery_tool === "string" && c.discovery_tool.trim() ? c.discovery_tool.trim() : (typeof c.discovered_via === "string" && c.discovered_via.trim() ? c.discovered_via.trim() : undefined);
+      const triageMethod = typeof c.triage_method === "string" && c.triage_method.trim() ? c.triage_method.trim() : (typeof c.triage_tool === "string" && c.triage_tool.trim() ? c.triage_tool.trim() : undefined);
 
       return {
         domain,
@@ -367,6 +376,8 @@ function extractDomainsFromJson(payload: unknown): DomainResult[] {
         reasoning: sanitizeReasoningSummary(String(c.reasoning_summary || c.reasoning || c.reason || c.analysis || "")),
         recommendedAction,
         humanReviewRequired: needsHumanReview,
+        discoveryTool,
+        triageMethod,
       };
     })
     .filter((d) => d.domain !== "unknown");
@@ -417,10 +428,14 @@ function extractDomainsFromText(text: string): DomainResult[] {
     const confMatch = blockBody.match(/(?:Confidence|Score|Probability)\s*:\s*\*?\*?([0-9]+(?:\.[0-9]+)?%?)/i);
     let confidence: number | null = null;
     if (confMatch) {
-      const valStr = confMatch[1].replace("%", "");
+      const valStr = confMatch[1].replace("%", "").trim();
       const val = parseFloat(valStr);
       if (!isNaN(val)) {
-        confidence = val <= 1 ? Math.round(val * 100) : Math.round(val);
+        if (val >= 0 && val <= 1) {
+          confidence = Math.round(val * 100);
+        } else if (val > 1 && val <= 100) {
+          confidence = Math.round(val);
+        }
       }
     }
 
@@ -518,18 +533,248 @@ function extractTextFromModelMessage(event: Record<string, unknown>): string {
   return "";
 }
 
-function extractToolCallNames(event: Record<string, unknown>): string[] {
-  const toolCalls = event.toolCalls as unknown[];
-  if (!Array.isArray(toolCalls)) return [];
-  return toolCalls
-    .filter((tc): tc is Record<string, unknown> => typeof tc === "object" && tc !== null)
-    .map((tc) => {
-      const info = tc.toolInfo as Record<string, unknown> | undefined;
-      const name = tc.function
-        ? (tc.function as Record<string, unknown>).name
-        : info?.name || tc.name;
-      return String(name || "unknown_tool");
+/**
+ * Shared canonical tool name extractor from raw tool call item or object.
+ * Supports: function.name, toolInfo.name, and name / toolName / tool_name.
+ */
+export function extractCanonicalToolName(tc: unknown): string | null {
+  if (!tc || typeof tc !== "object") return null;
+  const obj = tc as Record<string, unknown>;
+  const fnObj = obj.function as Record<string, unknown> | undefined;
+  const infoObj = obj.toolInfo as Record<string, unknown> | undefined;
+
+  const candidate =
+    (fnObj && typeof fnObj.name === "string" ? fnObj.name : null) ||
+    (infoObj && typeof infoObj.name === "string" ? infoObj.name : null) ||
+    (typeof obj.name === "string" ? obj.name : null) ||
+    (typeof obj.toolName === "string" ? obj.toolName : null) ||
+    (typeof obj.tool_name === "string" ? obj.tool_name : null);
+
+  if (candidate && candidate.trim()) {
+    return candidate.trim();
+  }
+  return null;
+}
+
+/**
+ * Extract all canonical tool names called within a single event object.
+ * Handles both top-level and nested `data` envelopes.
+ */
+export function extractToolCallNames(event: Record<string, unknown>): string[] {
+  if (!event || typeof event !== "object") return [];
+  const data = (event.data && typeof event.data === "object" ? event.data : event) as Record<string, unknown>;
+  const rawCalls = data.toolCalls || data.tool_calls || event.toolCalls || event.tool_calls;
+
+  const names: string[] = [];
+
+  if (Array.isArray(rawCalls)) {
+    for (const tc of rawCalls) {
+      const name = extractCanonicalToolName(tc);
+      if (name && !names.includes(name)) {
+        names.push(name);
+      }
+    }
+  }
+
+  // Also check single toolInfo on event/data
+  const singleName = extractCanonicalToolName(data.toolInfo || event.toolInfo);
+  if (singleName && !names.includes(singleName)) {
+    names.push(singleName);
+  }
+
+  return names;
+}
+
+/**
+ * Extract all unique canonical tool names from a list of raw TrueForge events.
+ */
+export function extractUniqueToolNamesFromEvents(events?: RawTrueForgeEvent[]): string[] {
+  if (!events || !Array.isArray(events) || events.length === 0) return [];
+  const set = new Set<string>();
+
+  for (const ev of events) {
+    const evObj = (ev.data && typeof ev.data === "object" ? ev.data : ev) as Record<string, unknown>;
+    const names = extractToolCallNames(evObj);
+    for (const n of names) {
+      set.add(n);
+    }
+  }
+
+  return Array.from(set);
+}
+
+export interface RecordedStageTelemetry {
+  uniqueTools: string[];
+  discovery: { proven: boolean; tool?: string };
+  triage: { proven: boolean; tool?: string };
+  historicalIntel: { proven: boolean; tool?: string };
+  evidenceReview: { proven: boolean; tool?: string };
+}
+
+function isValidResultString(str: unknown): boolean {
+  if (typeof str !== "string") return false;
+  const trimmed = str.trim();
+  if (trimmed.length === 0 || trimmed === "{}" || trimmed === "[]") return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("error") || lower.startsWith("fail") || lower.startsWith("exception")) {
+    return false;
+  }
+  return true;
+}
+
+function isValidSubagentResult(evData: Record<string, unknown>): boolean {
+  // Check for error statuses
+  const status = String(
+    (evData.state as Record<string, unknown>)?.status ||
+    evData.status ||
+    ""
+  ).toLowerCase();
+  if (status === "error" || status === "failed" || status === "cancelled") {
+    return false;
+  }
+
+  // Check state.output, output, content, or result
+  const stateObj = evData.state as Record<string, unknown> | undefined;
+  const rawOutput = stateObj?.output ?? evData.output ?? evData.content ?? stateObj?.result ?? evData.result;
+
+  // A validated non-empty result payload is strictly required — status alone does not prove stage completion
+  if (rawOutput === null || rawOutput === undefined) {
+    return false;
+  }
+
+  if (typeof rawOutput === "string") {
+    return isValidResultString(rawOutput);
+  }
+
+  if (Array.isArray(rawOutput)) {
+    return rawOutput.length > 0;
+  }
+
+  if (typeof rawOutput === "object" && rawOutput !== null) {
+    const obj = rawOutput as Record<string, unknown>;
+    const content = obj.content || obj.text || obj.result || obj.domains || obj.findings;
+    if (typeof content === "string") {
+      return isValidResultString(content);
+    }
+    if (Array.isArray(content)) {
+      return content.length > 0;
+    }
+    const nonStatusKeys = Object.keys(obj).filter(
+      (k) => k !== "status" && k !== "id" && k !== "thread_id" && k !== "threadId" && k !== "type"
+    );
+    if (nonStatusKeys.length === 0) return false;
+    return nonStatusKeys.some((k) => {
+      const v = obj[k];
+      if (typeof v === "string") return isValidResultString(v);
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === "object" && v !== null) return Object.keys(v).length > 0;
+      return typeof v === "number" || typeof v === "boolean";
     });
+  }
+
+  return false;
+}
+
+/**
+ * Extract proven investigation stage telemetry by evaluating explicit thread metadata
+ * and tool calls scoped to specific stages, rather than loose global substring matching.
+ */
+export function extractStageTelemetryFromEvents(events?: RawTrueForgeEvent[]): RecordedStageTelemetry {
+  const telemetry: RecordedStageTelemetry = {
+    uniqueTools: [],
+    discovery: { proven: false },
+    triage: { proven: false },
+    historicalIntel: { proven: false },
+    evidenceReview: { proven: false },
+  };
+
+  if (!events || !Array.isArray(events) || events.length === 0) {
+    return telemetry;
+  }
+
+  const threadStageMap = new Map<string, "discovery" | "triage" | "historicalIntel" | "evidenceReview">();
+  const allTools = new Set<string>();
+
+  for (const ev of events) {
+    const evData = (ev.data && typeof ev.data === "object" ? ev.data : ev) as Record<string, unknown>;
+    const type = String(ev.type || evData.type || "");
+
+    // 1. Explicit thread creation & subagent registration (metadata mapping only)
+    if (type === "thread.created") {
+      const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
+      const title = String(evData.title || (evData.agentInfo as Record<string, unknown>)?.name || "").toLowerCase();
+      if (threadId) {
+        if (title.includes("discovery") || title.includes("domain-discovery")) {
+          threadStageMap.set(threadId, "discovery");
+        } else if (title.includes("triage") || title.includes("domain-triage")) {
+          threadStageMap.set(threadId, "triage");
+        } else if (title.includes("reviewer") || title.includes("evidence-review") || title.includes("evidence_review")) {
+          threadStageMap.set(threadId, "evidenceReview");
+        } else if (title.includes("intel") || title.includes("historical")) {
+          threadStageMap.set(threadId, "historicalIntel");
+        }
+      }
+    }
+
+    // 2. Thread completion with validated, non-empty result payload
+    if (type === "thread.done") {
+      const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
+      const threadStage = threadId ? threadStageMap.get(threadId) : undefined;
+      if (threadStage && isValidSubagentResult(evData)) {
+        telemetry[threadStage].proven = true;
+      }
+    }
+
+    // 3. Tool calls and their associated thread scope
+    const toolNames = extractToolCallNames(evData);
+    const eventThreadId = String(evData.thread_id || evData.threadId || "");
+    const threadStage = eventThreadId ? threadStageMap.get(eventThreadId) : undefined;
+
+    for (const toolName of toolNames) {
+      allTools.add(toolName);
+      const lower = toolName.toLowerCase();
+
+      // Explicit dedicated tools by name
+      if (lower === "domain-discovery" || lower.includes("domain-discovery")) {
+        telemetry.discovery.proven = true;
+        telemetry.discovery.tool = toolName;
+      } else if (lower === "domain-triage" || lower.includes("domain-triage")) {
+        telemetry.triage.proven = true;
+        telemetry.triage.tool = toolName;
+      } else if (lower === "evidence-reviewer" || lower.includes("evidence-reviewer")) {
+        telemetry.evidenceReview.proven = true;
+        telemetry.evidenceReview.tool = toolName;
+      }
+
+      // If tool was called within a designated thread
+      if (threadStage === "discovery") {
+        telemetry.discovery.proven = true;
+        if (!telemetry.discovery.tool) telemetry.discovery.tool = toolName;
+      } else if (threadStage === "triage") {
+        telemetry.triage.proven = true;
+        if (!telemetry.triage.tool) telemetry.triage.tool = toolName;
+      } else if (threadStage === "evidenceReview") {
+        telemetry.evidenceReview.proven = true;
+        if (!telemetry.evidenceReview.tool) telemetry.evidenceReview.tool = toolName;
+      } else if (threadStage === "historicalIntel") {
+        telemetry.historicalIntel.proven = true;
+        if (!telemetry.historicalIntel.tool) telemetry.historicalIntel.tool = toolName;
+      } else {
+        // Main thread tool calls: assign specifically without loose cross-contamination
+        if (lower.includes("fetch") && !telemetry.triage.tool) {
+          telemetry.triage.proven = true;
+          telemetry.triage.tool = toolName;
+        }
+        if (lower.includes("search") && !telemetry.discovery.tool) {
+          telemetry.discovery.proven = true;
+          telemetry.discovery.tool = toolName;
+        }
+      }
+    }
+  }
+
+  telemetry.uniqueTools = Array.from(allTools);
+  return telemetry;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────
@@ -693,14 +938,14 @@ export function useInvestigation() {
               return;
             }
 
-            addLog("> INVESTIGATION COMPLETE", "phase");
-
             setState((prev) => {
+              const completionLog = makeLog("> INVESTIGATION COMPLETE", "phase");
+              const finalLogs = [...prev.logs, completionLog];
               const result = parseFinalOutput(finalContent, brand, prev.sessionId || "");
               result.startedAt = prev.startedAt;
-              result.logs = prev.logs;
+              result.logs = finalLogs;
               result.events = prev.events;
-              return { ...prev, phase: "complete", result };
+              return { ...prev, phase: "complete", result, logs: finalLogs };
             });
           }
           break;
@@ -892,15 +1137,17 @@ export function useInvestigation() {
         setState((prev) => {
           if (prev.phase !== "complete" && prev.phase !== "error" && prev.phase !== "cancelled") {
             const finalContent = lastMessageRef.current || streamedDeltasRef.current;
+            const completionLog = makeLog("> INVESTIGATION COMPLETE", "phase");
+            const finalLogs = [...prev.logs, completionLog];
             const result = parseFinalOutput(finalContent, cleanBrand, prev.sessionId || "");
             result.startedAt = prev.startedAt;
-            result.logs = prev.logs;
+            result.logs = finalLogs;
             result.events = prev.events;
             return {
               ...prev,
               phase: "complete",
               result,
-              logs: [...prev.logs, makeLog("> INVESTIGATION COMPLETE", "phase")],
+              logs: finalLogs,
             };
           }
           return prev;
