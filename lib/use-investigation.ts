@@ -59,6 +59,9 @@ export interface InvestigationResult {
   parseSucceeded: boolean;
   sessionId: string;
   completedAt: string;
+  startedAt?: number | null;
+  logs?: LogEntry[];
+  events?: RawTrueForgeEvent[];
 }
 
 /** A raw TrueForge event preserved verbatim */
@@ -694,6 +697,9 @@ export function useInvestigation() {
 
             setState((prev) => {
               const result = parseFinalOutput(finalContent, brand, prev.sessionId || "");
+              result.startedAt = prev.startedAt;
+              result.logs = prev.logs;
+              result.events = prev.events;
               return { ...prev, phase: "complete", result };
             });
           }
@@ -887,6 +893,9 @@ export function useInvestigation() {
           if (prev.phase !== "complete" && prev.phase !== "error" && prev.phase !== "cancelled") {
             const finalContent = lastMessageRef.current || streamedDeltasRef.current;
             const result = parseFinalOutput(finalContent, cleanBrand, prev.sessionId || "");
+            result.startedAt = prev.startedAt;
+            result.logs = prev.logs;
+            result.events = prev.events;
             return {
               ...prev,
               phase: "complete",
