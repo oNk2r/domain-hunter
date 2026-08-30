@@ -603,6 +603,111 @@ export function extractUniqueToolNamesFromEvents(events?: RawTrueForgeEvent[]): 
   return Array.from(set);
 }
 
+export interface RecordedStageTelemetry {
+  uniqueTools: string[];
+  discovery: { proven: boolean; tool?: string };
+  triage: { proven: boolean; tool?: string };
+  historicalIntel: { proven: boolean; tool?: string };
+  evidenceReview: { proven: boolean; tool?: string };
+}
+
+/**
+ * Extract proven investigation stage telemetry by evaluating explicit thread metadata
+ * and tool calls scoped to specific stages, rather than loose global substring matching.
+ */
+export function extractStageTelemetryFromEvents(events?: RawTrueForgeEvent[]): RecordedStageTelemetry {
+  const telemetry: RecordedStageTelemetry = {
+    uniqueTools: [],
+    discovery: { proven: false },
+    triage: { proven: false },
+    historicalIntel: { proven: false },
+    evidenceReview: { proven: false },
+  };
+
+  if (!events || !Array.isArray(events) || events.length === 0) {
+    return telemetry;
+  }
+
+  const threadStageMap = new Map<string, "discovery" | "triage" | "historicalIntel" | "evidenceReview">();
+  const allTools = new Set<string>();
+
+  for (const ev of events) {
+    const evData = (ev.data && typeof ev.data === "object" ? ev.data : ev) as Record<string, unknown>;
+    const type = String(ev.type || evData.type || "");
+
+    // 1. Explicit thread creation & subagent registration
+    if (type === "thread.created") {
+      const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
+      const title = String(evData.title || (evData.agentInfo as Record<string, unknown>)?.name || "").toLowerCase();
+      if (threadId) {
+        if (title.includes("discovery") || title.includes("domain-discovery")) {
+          threadStageMap.set(threadId, "discovery");
+          telemetry.discovery.proven = true;
+        } else if (title.includes("triage") || title.includes("domain-triage")) {
+          threadStageMap.set(threadId, "triage");
+          telemetry.triage.proven = true;
+        } else if (title.includes("reviewer") || title.includes("evidence-review") || title.includes("evidence_review")) {
+          threadStageMap.set(threadId, "evidenceReview");
+          telemetry.evidenceReview.proven = true;
+        } else if (title.includes("intel") || title.includes("historical")) {
+          threadStageMap.set(threadId, "historicalIntel");
+          telemetry.historicalIntel.proven = true;
+        }
+      }
+    }
+
+    // 2. Tool calls and their associated thread scope
+    const toolNames = extractToolCallNames(evData);
+    const eventThreadId = String(evData.thread_id || evData.threadId || "");
+    const threadStage = eventThreadId ? threadStageMap.get(eventThreadId) : undefined;
+
+    for (const toolName of toolNames) {
+      allTools.add(toolName);
+      const lower = toolName.toLowerCase();
+
+      // Explicit dedicated tools by name
+      if (lower === "domain-discovery" || lower.includes("domain-discovery")) {
+        telemetry.discovery.proven = true;
+        telemetry.discovery.tool = toolName;
+      } else if (lower === "domain-triage" || lower.includes("domain-triage")) {
+        telemetry.triage.proven = true;
+        telemetry.triage.tool = toolName;
+      } else if (lower === "evidence-reviewer" || lower.includes("evidence-reviewer")) {
+        telemetry.evidenceReview.proven = true;
+        telemetry.evidenceReview.tool = toolName;
+      }
+
+      // If tool was called within a designated thread
+      if (threadStage === "discovery") {
+        telemetry.discovery.proven = true;
+        if (!telemetry.discovery.tool) telemetry.discovery.tool = toolName;
+      } else if (threadStage === "triage") {
+        telemetry.triage.proven = true;
+        if (!telemetry.triage.tool) telemetry.triage.tool = toolName;
+      } else if (threadStage === "evidenceReview") {
+        telemetry.evidenceReview.proven = true;
+        if (!telemetry.evidenceReview.tool) telemetry.evidenceReview.tool = toolName;
+      } else if (threadStage === "historicalIntel") {
+        telemetry.historicalIntel.proven = true;
+        if (!telemetry.historicalIntel.tool) telemetry.historicalIntel.tool = toolName;
+      } else {
+        // Main thread tool calls: assign specifically without loose cross-contamination
+        if (lower.includes("fetch") && !telemetry.triage.tool) {
+          telemetry.triage.proven = true;
+          telemetry.triage.tool = toolName;
+        }
+        if (lower.includes("search") && !telemetry.discovery.tool) {
+          telemetry.discovery.proven = true;
+          telemetry.discovery.tool = toolName;
+        }
+      }
+    }
+  }
+
+  telemetry.uniqueTools = Array.from(allTools);
+  return telemetry;
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────
 
 export function useInvestigation() {

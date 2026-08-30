@@ -8,6 +8,7 @@ import {
   type DomainClassification,
   type EvidenceSourceItem,
   extractUniqueToolNamesFromEvents,
+  extractStageTelemetryFromEvents,
 } from "@/lib/use-investigation";
 
 export default function InvestigationResultsPage() {
@@ -455,8 +456,9 @@ function InvestigationTimelineSection({
   const totalCandidates = result.domains.length;
   const totalSourcesCount = result.domains.reduce((acc, d) => acc + d.evidenceSources.length, 0);
 
-  // Extract tools strictly from recorded events using canonical extractor
-  const eventTools = extractUniqueToolNamesFromEvents(result.events);
+  // Extract explicit stage telemetry from recorded events
+  const stageTelemetry = extractStageTelemetryFromEvents(result.events);
+  const eventTools = stageTelemetry.uniqueTools;
   const hasGenuineToolTelemetry = eventTools.length > 0;
 
   // Telemetry is verified ONLY when genuine tool-call telemetry exists in recorded events
@@ -466,23 +468,18 @@ function InvestigationTimelineSection({
   const logTools: string[] = [];
   if (!hasGenuineToolTelemetry && result.logs && Array.isArray(result.logs)) {
     for (const log of result.logs) {
-      if (log.text.includes("web_search_exa") && !logTools.includes("web_search_exa")) logTools.push("web_search_exa");
-      if (log.text.includes("web_fetch_exa") && !logTools.includes("web_fetch_exa")) logTools.push("web_fetch_exa");
-      if (log.text.includes("domain-discovery") && !logTools.includes("domain-discovery")) logTools.push("domain-discovery");
-      if (log.text.includes("domain-triage") && !logTools.includes("domain-triage")) logTools.push("domain-triage");
-      if (log.text.includes("evidence-reviewer") && !logTools.includes("evidence-reviewer")) logTools.push("evidence-reviewer");
+      const textLower = log.text.toLowerCase();
+      if (textLower.includes("web_search_exa") && !logTools.includes("web_search_exa")) logTools.push("web_search_exa");
+      if (textLower.includes("web_fetch_exa") && !logTools.includes("web_fetch_exa")) logTools.push("web_fetch_exa");
+      if (textLower.includes("domain-discovery") && !logTools.includes("domain-discovery")) logTools.push("domain-discovery");
+      if (textLower.includes("domain-triage") && !logTools.includes("domain-triage")) logTools.push("domain-triage");
+      if (textLower.includes("evidence-reviewer") && !logTools.includes("evidence-reviewer")) logTools.push("evidence-reviewer");
     }
   }
 
   const toolsDisplay = hasGenuineToolTelemetry
     ? eventTools.join(", ")
     : (logTools.length > 0 ? `${logTools.join(", ")} (LOGS ONLY - UNVERIFIED)` : "UNKNOWN / UNAVAILABLE");
-
-  // Check specific tool telemetry for individual timeline milestones strictly from recorded events
-  const discoveryTool = eventTools.find((t) => t.includes("search") || t.includes("discovery"));
-  const triageTool = eventTools.find((t) => t.includes("fetch") || t.includes("triage"));
-  const historicalTool = eventTools.find((t) => t.includes("search") || t.includes("intel") || t.includes("exa"));
-  const reviewTool = eventTools.find((t) => t.includes("reviewer") || t.includes("evidence"));
 
   const milestones: {
     title: string;
@@ -498,33 +495,33 @@ function InvestigationTimelineSection({
     },
     {
       title: "Domain discovery",
-      detail: discoveryTool ? `Identified ${totalCandidates} candidate domain(s) for brand analysis.` : "Discovery tool telemetry unrecorded.",
-      status: discoveryTool ? "completed" : "unavailable",
-      tool: discoveryTool || "UNKNOWN / UNAVAILABLE",
+      detail: stageTelemetry.discovery.proven ? `Identified ${totalCandidates} candidate domain(s) for brand analysis.` : "Discovery stage telemetry unrecorded.",
+      status: stageTelemetry.discovery.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.discovery.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Candidate domains discovered",
-      detail: discoveryTool && totalCandidates > 0 ? `${totalCandidates} domain name(s) queued for live inspection.` : "Domain discovery telemetry unrecorded.",
-      status: discoveryTool && totalCandidates > 0 ? "completed" : "unavailable",
-      tool: discoveryTool || "UNKNOWN / UNAVAILABLE",
+      detail: stageTelemetry.discovery.proven && totalCandidates > 0 ? `${totalCandidates} domain name(s) queued for live inspection.` : "Domain discovery telemetry unrecorded.",
+      status: stageTelemetry.discovery.proven && totalCandidates > 0 ? "completed" : "unavailable",
+      tool: stageTelemetry.discovery.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Live domain triage",
-      detail: triageTool ? `Live triage and content inspection conducted on candidates.` : "Live triage tool telemetry unrecorded.",
-      status: triageTool ? "completed" : "unavailable",
-      tool: triageTool || "UNKNOWN / UNAVAILABLE",
+      detail: stageTelemetry.triage.proven ? `Live triage and content inspection conducted on candidates.` : "Live triage stage telemetry unrecorded.",
+      status: stageTelemetry.triage.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.triage.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Historical evidence collected",
-      detail: historicalTool && totalSourcesCount > 0 ? `${totalSourcesCount} evidence source reference(s) analyzed.` : "Historical evidence tool telemetry unrecorded.",
-      status: historicalTool && totalSourcesCount > 0 ? "completed" : "unavailable",
-      tool: historicalTool || "UNKNOWN / UNAVAILABLE",
+      detail: stageTelemetry.historicalIntel.proven && totalSourcesCount > 0 ? `${totalSourcesCount} evidence source reference(s) analyzed.` : "Historical evidence stage telemetry unrecorded.",
+      status: stageTelemetry.historicalIntel.proven && totalSourcesCount > 0 ? "completed" : "unavailable",
+      tool: stageTelemetry.historicalIntel.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Evidence review",
-      detail: reviewTool ? `Forensic review and classification validation completed.` : "Evidence reviewer tool telemetry unrecorded.",
-      status: reviewTool ? "completed" : "unavailable",
-      tool: reviewTool || "UNKNOWN / UNAVAILABLE",
+      detail: stageTelemetry.evidenceReview.proven ? `Forensic review and classification validation completed.` : "Evidence review stage telemetry unrecorded.",
+      status: stageTelemetry.evidenceReview.proven ? "completed" : "unavailable",
+      tool: stageTelemetry.evidenceReview.tool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Classification complete",
