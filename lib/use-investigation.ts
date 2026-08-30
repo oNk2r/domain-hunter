@@ -21,6 +21,8 @@ export interface LogEntry {
   timestamp: string;
   text: string;
   type: "info" | "tool_call" | "tool_result" | "phase" | "error" | "agent";
+  phase?: "DISCOVERY" | "TRIAGE" | "RESEARCH" | "EVIDENCE" | "ASSESSMENT" | "SYSTEM";
+  toolName?: string;
 }
 
 /** Classification from TrueForge agent output */
@@ -103,8 +105,13 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function makeLog(text: string, type: LogEntry["type"] = "info"): LogEntry {
-  return { timestamp: now(), text, type };
+function makeLog(
+  text: string,
+  type: LogEntry["type"] = "info",
+  phase?: LogEntry["phase"],
+  toolName?: string
+): LogEntry {
+  return { timestamp: now(), text, type, phase, toolName };
 }
 
 const PHASE_RANKS: Record<InvestigationPhase, number> = {
@@ -122,21 +129,54 @@ const PHASE_RANKS: Record<InvestigationPhase, number> = {
 };
 
 /**
- * Infer the investigation phase from thread titles, tool calls, or explicit status events.
- * Never allows opening planning thoughts to skip to final_assessment.
+ * Infer the investigation phase sequentially from thread titles, tool calls, or explicit status events.
  */
-function inferPhaseFromActivity(activity: string, isToolCall = false): InvestigationPhase | null {
+function inferPhaseFromActivity(
+  activity: string,
+  isToolCall = false,
+  currentPhase: InvestigationPhase = "starting"
+): InvestigationPhase | null {
   const t = activity.toLowerCase();
 
-  // Tool calls & sub-agent thread names have highest priority
-  if (t.includes("domain-discovery") || t.includes("discover candidate") || t.includes("discovering domain")) return "discovery";
-  if (t.includes("domain-triage") || t.includes("triaging") || t.includes("triage")) return "triage";
-  if (t.includes("exa") || t.includes("web_search") || t.includes("web_fetch") || t.includes("exec") || t.includes("sandbox") || t.includes("whois") || t.includes("dig") || t.includes("curl") || t.includes("dns")) return "public_research";
-  if (t.includes("evidence-reviewer") || t.includes("validating evidence") || t.includes("reviewing evidence")) return "evidence_review";
+  // 1. Sub-agent threads & designated names
+  if (t.includes("domain-discovery") || t.includes("discover candidate") || t.includes("discovering domain")) {
+    return "discovery";
+  }
+  if (t.includes("domain-triage") || t.includes("triaging candidate") || t.includes("triage")) {
+    return "triage";
+  }
+  if (t.includes("evidence-reviewer") || t.includes("validating evidence") || t.includes("reviewing evidence")) {
+    return "evidence_review";
+  }
+  if (t.includes("threat intelligence") || t.includes("threat research") || t.includes("intel")) {
+    return "public_research";
+  }
 
-  // Only allow final_assessment if explicitly completing or report compiling
-  if (isToolCall) return null;
-  if (t.startsWith("compiling final") || t.startsWith("investigation report") || t.startsWith("final verdict") || t.includes("generating final dossier")) {
+  // 2. Tool calls
+  if (isToolCall) {
+    if (t.includes("web_search_exa") || t.includes("web_search")) {
+      if (currentPhase === "triage" || currentPhase === "public_research" || currentPhase === "evidence_review") {
+        return "public_research";
+      }
+      return "discovery";
+    }
+    if (t.includes("web_fetch_exa") || t.includes("web_fetch") || t.includes("fetch") || t.includes("curl") || t.includes("http")) {
+      return "triage";
+    }
+    if (t.includes("sandbox") || t.includes("exec") || t.includes("whois") || t.includes("dig") || t.includes("dns")) {
+      return "public_research";
+    }
+    return null;
+  }
+
+  // 3. Status messages
+  if (
+    t.startsWith("compiling final") ||
+    t.startsWith("investigation report") ||
+    t.startsWith("final verdict") ||
+    t.includes("generating final dossier") ||
+    t.includes("classifying")
+  ) {
     return "final_assessment";
   }
 
@@ -165,43 +205,53 @@ function parseFinalOutput(
     return base;
   }
 
-  // 1. Try to find JSON in the content (code blocks or raw JSON)
-  let jsonStr = content;
-  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    jsonStr = jsonMatch[1].trim();
-  }
+  // Strip think tags if any
+  const cleaned = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
-  if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) {
-    const braceStart = content.indexOf("{");
-    const bracketStart = content.indexOf("[");
-    const start = braceStart >= 0 && bracketStart >= 0
-      ? Math.min(braceStart, bracketStart)
-      : Math.max(braceStart, bracketStart);
-    if (start >= 0) {
-      jsonStr = content.slice(start);
+  // 1. Try to find JSON in the content (code blocks or raw JSON object/array)
+  let jsonStr = "";
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1].trim();
+  } else {
+    // Look for outermost JSON object { ... } containing "domains" or "status" or "brand"
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = cleaned.slice(firstBrace, lastBrace + 1).trim();
+    } else {
+      const firstBracket = cleaned.indexOf("[");
+      const lastBracket = cleaned.lastIndexOf("]");
+      if (firstBracket !== -1 && lastBracket > firstBracket) {
+        jsonStr = cleaned.slice(firstBracket, lastBracket + 1).trim();
+      }
     }
   }
 
-  try {
-    const parsed = JSON.parse(jsonStr);
-    const domains = extractDomainsFromJson(parsed);
-    if (domains.length > 0) {
-      base.domains = domains;
-      base.parseSucceeded = true;
-      return base;
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const domains = extractDomainsFromJson(parsed);
+      if (domains.length > 0) {
+        base.domains = domains;
+        base.parseSucceeded = true;
+        base.rawAgentOutput = JSON.stringify(parsed, null, 2);
+        return base;
+      }
+      if (typeof parsed === "object" && parsed !== null) {
+        const obj = parsed as Record<string, unknown>;
+        if (String(obj.status || "").toUpperCase() === "FAILED") {
+          base.parseSucceeded = false;
+          base.rawAgentOutput = JSON.stringify(parsed, null, 2);
+          return base;
+        }
+      }
+    } catch {
+      // JSON parse failed
     }
-  } catch {
-    // JSON parse failed — proceed to markdown / text parser
   }
 
-  // 2. Parse Markdown or plain text domain cards
-  const domains = extractDomainsFromText(content);
-  if (domains.length > 0) {
-    base.domains = domains;
-    base.parseSucceeded = true;
-  }
-
+  // Strict: Do NOT attempt to convert unstructured planning text into fake domain cards.
   return base;
 }
 
@@ -292,36 +342,53 @@ function sanitizeReasoningSummary(reasoning: string): string {
         !lower.startsWith("now ") &&
         !lower.startsWith("can't ") &&
         !lower.startsWith("we need ") &&
+        !lower.startsWith("we must ") &&
+        !lower.startsWith("we should ") &&
+        !lower.startsWith("first step ") &&
         !lower.startsWith("perhaps ") &&
-        !lower.startsWith("search for ")
+        !lower.startsWith("search for ") &&
+        !lower.includes("follow domain hunter workflow") &&
+        !lower.includes("discover candidate domains") &&
+        !lower.includes("call web_search_exa") &&
+        !lower.includes("call web_fetch_exa")
       );
     })
     .join(" ")
     .trim();
-  return clean || reasoning.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  return clean;
 }
 
-function formatToolCallLog(toolName: string): string {
+function formatToolCallLog(
+  toolName: string,
+  phase: InvestigationPhase = "discovery"
+): { text: string; phaseTag: LogEntry["phase"]; toolName: string } {
   const t = toolName.toLowerCase();
+  let phaseTag: LogEntry["phase"] = "DISCOVERY";
+  let text = `Running tool ${toolName}`;
+
   if (t.includes("web_search_exa") || t.includes("search")) {
-    return "> EXA / web_search_exa: SEARCHING PUBLIC WEB SOURCES";
+    if (phase === "triage" || phase === "public_research" || phase === "evidence_review") {
+      phaseTag = "RESEARCH";
+      text = "Reviewing historical threat intelligence records";
+    } else {
+      phaseTag = "DISCOVERY";
+      text = "Searching public sources for candidate lookalike domains";
+    }
+  } else if (t.includes("web_fetch_exa") || t.includes("fetch") || t.includes("curl") || t.includes("triage")) {
+    phaseTag = "TRIAGE";
+    text = "Checking live DNS, SSL, and content for candidate domains";
+  } else if (t.includes("reviewer") || t.includes("evidence")) {
+    phaseTag = "EVIDENCE";
+    text = "Validating evidence provenance and contradiction analysis";
+  } else if (t.includes("whois") || t.includes("dig") || t.includes("dns") || t.includes("sandbox") || t.includes("exec")) {
+    phaseTag = "RESEARCH";
+    text = "Executing sandbox inspection and domain telemetry check";
+  } else if (t.includes("discovery")) {
+    phaseTag = "DISCOVERY";
+    text = "Starting candidate domain discovery";
   }
-  if (t.includes("web_fetch_exa") || t.includes("fetch")) {
-    return "> EXA / web_fetch_exa: FETCHING DOMAIN EVIDENCE";
-  }
-  if (t.includes("triage")) {
-    return "> DOMAIN-TRIAGE: TRIAGING CANDIDATE DOMAINS";
-  }
-  if (t.includes("reviewer") || t.includes("evidence")) {
-    return "> EVIDENCE-REVIEWER: VALIDATING EVIDENCE SIGNATURES";
-  }
-  if (t.includes("discovery")) {
-    return "> DOMAIN-DISCOVERY: STARTING DOMAIN DISCOVERY";
-  }
-  if (t.includes("skill") || t.includes("read")) {
-    return `> LOADING INVESTIGATION PROTOCOLS: ${toolName.toUpperCase()}`;
-  }
-  return `> RUNNING TOOL: ${toolName.toUpperCase()}`;
+
+  return { text, phaseTag, toolName };
 }
 
 function extractDomainsFromJson(payload: unknown): DomainResult[] {
@@ -391,113 +458,7 @@ function detectHumanReviewNeeded(c: Record<string, unknown>, classification?: Do
   return consequentialKeywords.some((kw) => action.includes(kw));
 }
 
-function extractDomainsFromText(text: string): DomainResult[] {
-  if (!text || !text.trim()) return [];
 
-  const results: DomainResult[] = [];
-
-  // Match domain sections e.g. "### 1. isblkx.shop", "isblkx.shop", "Domain: isblkx.shop"
-  const domainBlockRegex = /(?:^|\n)(?:###?\s*|\d+[\.\)]\s*|\*\*\s*|Domain:\s*)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)\b([\s\S]*?)(?=(?:\n(?:###?\s*|\d+[\.\)]\s*|\*\*\s*|Domain:\s*)[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,})|$)/gi;
-
-  let match;
-  while ((match = domainBlockRegex.exec(text)) !== null) {
-    const rawDomain = match[1].toLowerCase().trim();
-    // Exclude file extensions, tools, or invalid tokens
-    if (
-      rawDomain.endsWith(".js") ||
-      rawDomain.endsWith(".ts") ||
-      rawDomain.endsWith(".md") ||
-      rawDomain.endsWith(".json") ||
-      rawDomain.endsWith(".png") ||
-      rawDomain.endsWith(".jpg") ||
-      rawDomain.endsWith(".ai") ||
-      rawDomain.includes("trueforge") ||
-      rawDomain.includes("openrouter") ||
-      rawDomain.includes("localhost")
-    ) {
-      continue;
-    }
-
-    const blockBody = match[2] || "";
-
-    // Extract Classification
-    const classMatch = blockBody.match(/(?:Classification|Status|Verdict|Threat level)\s*:\s*\*?\*?([A-Z_ ]+)/i);
-    const classification = classMatch ? normalizeClassification(classMatch[1]) : "INCONCLUSIVE";
-
-    // Extract Confidence
-    const confMatch = blockBody.match(/(?:Confidence|Score|Probability)\s*:\s*\*?\*?([0-9]+(?:\.[0-9]+)?%?)/i);
-    let confidence: number | null = null;
-    if (confMatch) {
-      const valStr = confMatch[1].replace("%", "").trim();
-      const val = parseFloat(valStr);
-      if (!isNaN(val)) {
-        if (val >= 0 && val <= 1) {
-          confidence = Math.round(val * 100);
-        } else if (val > 1 && val <= 100) {
-          confidence = Math.round(val);
-        }
-      }
-    }
-
-    // Extract Current Observations
-    const currObsMatch = blockBody.match(/(?:Current (?:evidence|observations?)|Live observations?)\s*:\s*([^\n]+(?:\n(?!\s*(?:Historical|Contradictory|Evidence|Reasoning|Recommended|Human|\d+\.|\*))[^\n]+)*)/i);
-    const currentObservations = currObsMatch
-      ? currObsMatch[1].split(/[\n,;•·-]/).map((s) => s.trim()).filter((s) => s.length > 2)
-      : [];
-
-    // Extract Historical Evidence
-    const histMatch = blockBody.match(/(?:Historical (?:evidence|intelligence|threat intel)|Threat intel)\s*:\s*([^\n]+(?:\n(?!\s*(?:Current|Contradictory|Evidence|Reasoning|Recommended|Human|\d+\.|\*))[^\n]+)*)/i);
-    const historicalEvidence = histMatch
-      ? histMatch[1].split(/[\n,;•·+]/).map((s) => s.trim()).filter((s) => s.length > 2)
-      : [];
-
-    // Extract Contradictory Evidence
-    const contraMatch = blockBody.match(/(?:Contradictory evidence)\s*:\s*([^\n]+(?:\n(?!\s*(?:Current|Historical|Evidence|Reasoning|Recommended|Human|\d+\.|\*))[^\n]+)*)/i);
-    const contradictoryEvidence = contraMatch
-      ? contraMatch[1].split(/[\n,;•·]/).map((s) => s.trim()).filter((s) => s.length > 2)
-      : [];
-
-    // Extract Sources
-    const srcMatch = blockBody.match(/(?:Evidence sources?|Sources?)\s*:\s*([^\n]+(?:\n(?!\s*(?:Current|Historical|Contradictory|Reasoning|Recommended|Human|\d+\.|\*))[^\n]+)*)/i);
-    const evidenceSources = srcMatch
-      ? srcMatch[1].split(/[\n,;•·]/).map((s) => s.trim()).filter((s) => s.length > 2)
-      : [];
-
-    // Extract Reasoning
-    const reasonMatch = blockBody.match(/(?:Reasoning|Analysis|Summary)\s*:\s*([^\n]+(?:\n(?!\s*(?:Current|Historical|Contradictory|Evidence|Recommended|Human|\d+\.|\*))[^\n]+)*)/i);
-    const reasoning = sanitizeReasoningSummary(reasonMatch ? reasonMatch[1].trim() : "");
-
-    // Extract Recommended Action
-    const actionMatch = blockBody.match(/(?:Recommended action|Action)\s*:\s*([^\n]+)/i);
-    const recommendedAction = sanitizeActionLanguage(actionMatch ? actionMatch[1] : "");
-
-    const humanReviewRequired =
-      /human review\s*:\s*required/i.test(blockBody) ||
-      classification === "SUSPICIOUS" ||
-      classification === "LIKELY_IMPERSONATION";
-
-    results.push({
-      domain: rawDomain,
-      classification,
-      confidence,
-      currentObservations,
-      historicalEvidence,
-      contradictoryEvidence,
-      evidenceSources,
-      reasoning,
-      recommendedAction,
-      humanReviewRequired,
-    });
-  }
-
-  // Deduplicate
-  const seen = new Set<string>();
-  return results.filter((r) => {
-    if (seen.has(r.domain)) return false;
-    seen.add(r.domain);
-    return true;
-  });
-}
 
 // ── Extract text content from model.message event ──────────────────────
 
@@ -509,11 +470,7 @@ function extractTextFromModelMessage(event: Record<string, unknown>): string {
   if (delta && typeof delta === "object") {
     if (typeof delta.text === "string") return delta.text;
     if (typeof delta.content === "string") return delta.content;
-    if (typeof delta.reasoning_content === "string") return delta.reasoning_content;
-    if (typeof delta.reasoningDelta === "string") return delta.reasoningDelta;
   }
-
-  if (typeof event.reasoning_content === "string") return event.reasoning_content;
 
   const content = event.content;
   if (Array.isArray(content)) {
@@ -523,8 +480,7 @@ function extractTextFromModelMessage(event: Record<string, unknown>): string {
         if (typeof part === "object" && part !== null) {
           const p = part as Record<string, unknown>;
           if (p.type === "text" && typeof p.text === "string") return p.text;
-          if (typeof p.content === "string") return p.content;
-          if (p.type === "reasoning" && typeof p.reasoning === "string") return p.reasoning;
+          if (p.type !== "reasoning" && typeof p.content === "string") return p.content;
         }
         return "";
       })
@@ -796,12 +752,20 @@ export function useInvestigation() {
   const lastMessageRef = useRef<string>("");
   const streamedDeltasRef = useRef<string>("");
 
-  const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
-    setState((prev) => ({
-      ...prev,
-      logs: [...prev.logs, makeLog(text, type)],
-    }));
-  }, []);
+  const addLog = useCallback(
+    (
+      text: string,
+      type: LogEntry["type"] = "info",
+      phaseTag?: LogEntry["phase"],
+      toolName?: string
+    ) => {
+      setState((prev) => ({
+        ...prev,
+        logs: [...prev.logs, makeLog(text, type, phaseTag, toolName)],
+      }));
+    },
+    []
+  );
 
   const addEvent = useCallback((type: string, data: unknown) => {
     setState((prev) => ({
@@ -826,8 +790,7 @@ export function useInvestigation() {
     (type: string, event: Record<string, unknown>, brand: string) => {
       switch (type) {
         case "turn.created": {
-          addLog("> AGENT INITIALIZED", "phase");
-          addLog("> STARTING DOMAIN DISCOVERY", "phase");
+          addLog(`Searching public sources for ${brand} impersonation domains`, "phase", "DISCOVERY");
           advancePhase("discovery");
           setState((prev) => ({
             ...prev,
@@ -843,10 +806,22 @@ export function useInvestigation() {
           const displayTitle = title || agentName;
 
           if (displayTitle) {
-            const inferred = inferPhaseFromActivity(displayTitle, false);
-            if (inferred) advancePhase(inferred);
-            // Surface subagent start in live feed
-            addLog(`> 🤖 SUBAGENT THREAD STARTED: ${displayTitle.toUpperCase()}`, "phase");
+            setState((prev) => {
+              const inferred = inferPhaseFromActivity(displayTitle, false, prev.phase);
+              if (inferred) advancePhase(inferred);
+              const phaseTag: LogEntry["phase"] =
+                inferred === "triage"
+                  ? "TRIAGE"
+                  : inferred === "evidence_review"
+                  ? "EVIDENCE"
+                  : inferred === "public_research"
+                  ? "RESEARCH"
+                  : "DISCOVERY";
+              return {
+                ...prev,
+                logs: [...prev.logs, makeLog(`Subagent workflow started: ${displayTitle.toUpperCase()}`, "agent", phaseTag)],
+              };
+            });
           }
           break;
         }
@@ -864,11 +839,31 @@ export function useInvestigation() {
           }
 
           if (toolCalls.length > 0) {
-            for (const toolName of toolCalls) {
-              addLog(formatToolCallLog(toolName), "tool_call");
-              const toolPhase = inferPhaseFromActivity(toolName, true);
-              if (toolPhase) advancePhase(toolPhase);
-            }
+            // Clear intermediate streamed text when tool calls start so they don't pollute final JSON
+            streamedDeltasRef.current = "";
+            setState((prev) => {
+              let updatedPhase = prev.phase;
+              const newLogs = [...prev.logs];
+
+              for (const toolName of toolCalls) {
+                const toolPhase = inferPhaseFromActivity(toolName, true, updatedPhase);
+                if (toolPhase) {
+                  const currentRank = PHASE_RANKS[updatedPhase] ?? 0;
+                  const newRank = PHASE_RANKS[toolPhase] ?? 0;
+                  if (newRank > currentRank) {
+                    updatedPhase = toolPhase;
+                  }
+                }
+                const formatted = formatToolCallLog(toolName, toolPhase || updatedPhase);
+                newLogs.push(makeLog(formatted.text, "tool_call", formatted.phaseTag, formatted.toolName));
+              }
+
+              return {
+                ...prev,
+                phase: updatedPhase,
+                logs: newLogs,
+              };
+            });
           }
           break;
         }
@@ -883,7 +878,7 @@ export function useInvestigation() {
         }
 
         case "tool.response": {
-          addLog("> TOOL RESPONSE RECEIVED", "tool_result");
+          streamedDeltasRef.current = "";
           break;
         }
 
@@ -894,23 +889,41 @@ export function useInvestigation() {
           if (status === "error") {
             const rawMsg = state?.message || (state?.error as Record<string, unknown>)?.message || state?.error || "Agent turn failed";
             const errorMsg = `TrueForge: ${String(rawMsg)}`;
-            addLog(`> INVESTIGATION FAILED — ${errorMsg}`, "error");
+            addLog(`Investigation failed: ${errorMsg}`, "error", "SYSTEM");
             setState((prev) => ({
               ...prev,
               phase: "error",
               error: errorMsg,
             }));
           } else if (status === "cancelled") {
-            addLog("> INVESTIGATION CANCELLED", "phase");
+            addLog("Investigation cancelled by operator", "phase", "SYSTEM");
             setState((prev) => ({ ...prev, phase: "cancelled" }));
           } else {
             let finalContent = "";
-            if (state && Array.isArray((state as Record<string, unknown>).messages)) {
+
+            // Check state.output directly (string or object with content/text)
+            if (typeof state?.output === "string" && state.output.trim()) {
+              finalContent = state.output.trim();
+            } else if (typeof state?.output === "object" && state.output !== null) {
+              const outObj = state.output as Record<string, unknown>;
+              if (typeof outObj.content === "string" && outObj.content.trim()) {
+                finalContent = outObj.content.trim();
+              } else if (typeof outObj.text === "string" && outObj.text.trim()) {
+                finalContent = outObj.text.trim();
+              }
+            }
+
+            // Search assistant messages backwards for structured JSON
+            if (!finalContent && state && Array.isArray((state as Record<string, unknown>).messages)) {
               const msgs = (state as Record<string, unknown>).messages as Record<string, unknown>[];
               for (let i = msgs.length - 1; i >= 0; i--) {
                 if (msgs[i].role === "assistant") {
                   const text = extractTextFromModelMessage(msgs[i]);
-                  if (text && text.length > finalContent.length) {
+                  if (text && (text.includes("{") || text.includes("["))) {
+                    finalContent = text;
+                    break;
+                  }
+                  if (text && !finalContent) {
                     finalContent = text;
                   }
                 }
@@ -929,7 +942,7 @@ export function useInvestigation() {
             if (isExplicitFailure) {
               const reasonMatch = finalContent.match(/REASON:\s*([^\n]+)/i);
               const failureReason = reasonMatch ? reasonMatch[1].trim() : "DOMAIN DISCOVERY UNAVAILABLE";
-              addLog(`> INVESTIGATION FAILED — ${failureReason}`, "error");
+              addLog(`Investigation failed: ${failureReason}`, "error", "DISCOVERY");
               setState((prev) => ({
                 ...prev,
                 phase: "error",
@@ -939,12 +952,24 @@ export function useInvestigation() {
             }
 
             setState((prev) => {
-              const completionLog = makeLog("> INVESTIGATION COMPLETE", "phase");
+              const completionLog = makeLog("Classification and forensic dossier complete", "phase", "ASSESSMENT");
               const finalLogs = [...prev.logs, completionLog];
               const result = parseFinalOutput(finalContent, brand, prev.sessionId || "");
               result.startedAt = prev.startedAt;
               result.logs = finalLogs;
               result.events = prev.events;
+
+              if (!result.parseSucceeded || result.domains.length === 0) {
+                const failureReason = "INVALID OR INCOMPLETE INVESTIGATION RESULT";
+                addLog(`Investigation failed: ${failureReason}`, "error", "ASSESSMENT");
+                return {
+                  ...prev,
+                  phase: "error",
+                  error: `INVESTIGATION FAILED: ${failureReason}`,
+                  logs: [...prev.logs, makeLog(`Error: ${failureReason}`, "error", "ASSESSMENT")],
+                };
+              }
+
               return { ...prev, phase: "complete", result, logs: finalLogs };
             });
           }
@@ -1163,6 +1188,17 @@ export function useInvestigation() {
             result.startedAt = prev.startedAt;
             result.logs = finalLogs;
             result.events = prev.events;
+
+            if (!result.parseSucceeded || result.domains.length === 0) {
+              const failureReason = "INVALID OR INCOMPLETE INVESTIGATION RESULT";
+              return {
+                ...prev,
+                phase: "error",
+                error: `INVESTIGATION FAILED: ${failureReason}`,
+                logs: [...prev.logs, makeLog(`> ERROR: ${failureReason}`, "error")],
+              };
+            }
+
             return {
               ...prev,
               phase: "complete",

@@ -46,9 +46,9 @@ function phaseToStep(phase: InvestigationPhase): number {
       return 5; // All 5 steps completed
     case "error":
     case "cancelled":
-      return 4;
+      return 0;
     default:
-      return 2;
+      return 0;
   }
 }
 
@@ -369,6 +369,8 @@ function InvestigationProgressContent() {
         <div className="lg:col-span-8 flex flex-col gap-6">
           <BoardGamePath
             currentStep={currentStep}
+            currentPhase={phase}
+            failureReason={error || undefined}
             onStepClick={() => {}} // Read-only during real investigation
           />
 
@@ -405,7 +407,7 @@ function InvestigationProgressContent() {
 
         {/* Right Column: Live Terminal Feed (4 cols) */}
         <div className="lg:col-span-4 flex flex-col">
-          <LiveLogFeed logs={logStrings} rawEvents={investigation.events} isStreaming={isStreaming} currentPhase={phase} />
+          <LiveLogFeed logs={logs} rawEvents={investigation.events} isStreaming={isStreaming} currentPhase={phase} />
         </div>
 
         {/* Bottom Contextual Cards (12 cols) */}
