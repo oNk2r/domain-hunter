@@ -455,31 +455,34 @@ function InvestigationTimelineSection({
   const totalCandidates = result.domains.length;
   const totalSourcesCount = result.domains.reduce((acc, d) => acc + d.evidenceSources.length, 0);
 
-  // Extract tools used strictly from recorded events using canonical extractor (Qodo Finding 4)
-  const recordedTools = extractUniqueToolNamesFromEvents(result.events);
+  // Extract tools strictly from recorded events using canonical extractor
+  const eventTools = extractUniqueToolNamesFromEvents(result.events);
+  const hasGenuineToolTelemetry = eventTools.length > 0;
 
-  // Fallback to logs only if tools were explicitly logged
-  if (recordedTools.length === 0 && result.logs && Array.isArray(result.logs)) {
+  // Telemetry is verified ONLY when genuine tool-call telemetry exists in recorded events
+  const isTelemetryVerified = Boolean(hasGenuineToolTelemetry && result.parseSucceeded);
+
+  // Optional legacy log tools inspection (strictly labeled, never drives verification)
+  const logTools: string[] = [];
+  if (!hasGenuineToolTelemetry && result.logs && Array.isArray(result.logs)) {
     for (const log of result.logs) {
-      if (log.text.includes("web_search_exa") && !recordedTools.includes("web_search_exa")) recordedTools.push("web_search_exa");
-      if (log.text.includes("web_fetch_exa") && !recordedTools.includes("web_fetch_exa")) recordedTools.push("web_fetch_exa");
-      if (log.text.includes("domain-discovery") && !recordedTools.includes("domain-discovery")) recordedTools.push("domain-discovery");
-      if (log.text.includes("domain-triage") && !recordedTools.includes("domain-triage")) recordedTools.push("domain-triage");
-      if (log.text.includes("evidence-reviewer") && !recordedTools.includes("evidence-reviewer")) recordedTools.push("evidence-reviewer");
+      if (log.text.includes("web_search_exa") && !logTools.includes("web_search_exa")) logTools.push("web_search_exa");
+      if (log.text.includes("web_fetch_exa") && !logTools.includes("web_fetch_exa")) logTools.push("web_fetch_exa");
+      if (log.text.includes("domain-discovery") && !logTools.includes("domain-discovery")) logTools.push("domain-discovery");
+      if (log.text.includes("domain-triage") && !logTools.includes("domain-triage")) logTools.push("domain-triage");
+      if (log.text.includes("evidence-reviewer") && !logTools.includes("evidence-reviewer")) logTools.push("evidence-reviewer");
     }
   }
 
-  const hasGenuineToolTelemetry = recordedTools.length > 0;
-  const toolsDisplay = hasGenuineToolTelemetry ? recordedTools.join(", ") : "UNKNOWN / UNAVAILABLE";
+  const toolsDisplay = hasGenuineToolTelemetry
+    ? eventTools.join(", ")
+    : (logTools.length > 0 ? `${logTools.join(", ")} (LOGS ONLY - UNVERIFIED)` : "UNKNOWN / UNAVAILABLE");
 
-  // Telemetry is verified ONLY when genuine tool-call telemetry exists in recorded events (Qodo Finding 1)
-  const isTelemetryVerified = Boolean(hasGenuineToolTelemetry && result.parseSucceeded);
-
-  // Check specific tool telemetry for individual timeline milestones (Qodo Finding 3)
-  const discoveryTool = recordedTools.find((t) => t.includes("search") || t.includes("discovery"));
-  const triageTool = recordedTools.find((t) => t.includes("fetch") || t.includes("triage"));
-  const historicalTool = recordedTools.find((t) => t.includes("search") || t.includes("intel") || t.includes("exa"));
-  const reviewTool = recordedTools.find((t) => t.includes("reviewer") || t.includes("evidence"));
+  // Check specific tool telemetry for individual timeline milestones strictly from recorded events
+  const discoveryTool = eventTools.find((t) => t.includes("search") || t.includes("discovery"));
+  const triageTool = eventTools.find((t) => t.includes("fetch") || t.includes("triage"));
+  const historicalTool = eventTools.find((t) => t.includes("search") || t.includes("intel") || t.includes("exa"));
+  const reviewTool = eventTools.find((t) => t.includes("reviewer") || t.includes("evidence"));
 
   const milestones: {
     title: string;
