@@ -19,7 +19,8 @@ tf.html
 trueforge-ui.js
 trueforge-openapi.json
 
-# ── Test artifacts ──────────────────────────────────────────
+# ── Test & Scratch artifacts ──────────────────────────────────
+scratch/
 test-results/
 playwright-report/
 coverage/
