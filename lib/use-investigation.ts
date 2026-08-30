@@ -49,6 +49,8 @@ export interface DomainResult {
   reasoning: string;
   recommendedAction: string;
   humanReviewRequired: boolean;
+  discoveryTool?: string;
+  triageMethod?: string;
 }
 
 /** The full investigation result */
@@ -348,13 +350,20 @@ function extractDomainsFromJson(payload: unknown): DomainResult[] {
       const classification = normalizeClassification(String(c.classification || c.status || ""));
 
       let confidence: number | null = null;
-      if (typeof c.confidence === "number") {
-        confidence = c.confidence <= 1 ? Math.round(c.confidence * 100) : Math.round(c.confidence);
+      if (typeof c.confidence === "number" && !isNaN(c.confidence)) {
+        if (c.confidence >= 0 && c.confidence <= 1) {
+          confidence = Math.round(c.confidence * 100);
+        } else if (c.confidence > 1 && c.confidence <= 100) {
+          confidence = Math.round(c.confidence);
+        }
       }
 
       const rawAction = String(c.recommended_action || c.recommendedAction || c.action || "");
       const recommendedAction = sanitizeActionLanguage(rawAction);
       const needsHumanReview = detectHumanReviewNeeded(c, classification);
+
+      const discoveryTool = typeof c.discovery_tool === "string" && c.discovery_tool.trim() ? c.discovery_tool.trim() : (typeof c.discovered_via === "string" && c.discovered_via.trim() ? c.discovered_via.trim() : undefined);
+      const triageMethod = typeof c.triage_method === "string" && c.triage_method.trim() ? c.triage_method.trim() : (typeof c.triage_tool === "string" && c.triage_tool.trim() ? c.triage_tool.trim() : undefined);
 
       return {
         domain,
@@ -367,6 +376,8 @@ function extractDomainsFromJson(payload: unknown): DomainResult[] {
         reasoning: sanitizeReasoningSummary(String(c.reasoning_summary || c.reasoning || c.reason || c.analysis || "")),
         recommendedAction,
         humanReviewRequired: needsHumanReview,
+        discoveryTool,
+        triageMethod,
       };
     })
     .filter((d) => d.domain !== "unknown");
@@ -417,10 +428,14 @@ function extractDomainsFromText(text: string): DomainResult[] {
     const confMatch = blockBody.match(/(?:Confidence|Score|Probability)\s*:\s*\*?\*?([0-9]+(?:\.[0-9]+)?%?)/i);
     let confidence: number | null = null;
     if (confMatch) {
-      const valStr = confMatch[1].replace("%", "");
+      const valStr = confMatch[1].replace("%", "").trim();
       const val = parseFloat(valStr);
       if (!isNaN(val)) {
-        confidence = val <= 1 ? Math.round(val * 100) : Math.round(val);
+        if (val >= 0 && val <= 1) {
+          confidence = Math.round(val * 100);
+        } else if (val > 1 && val <= 100) {
+          confidence = Math.round(val);
+        }
       }
     }
 
@@ -693,14 +708,14 @@ export function useInvestigation() {
               return;
             }
 
-            addLog("> INVESTIGATION COMPLETE", "phase");
-
             setState((prev) => {
+              const completionLog = makeLog("> INVESTIGATION COMPLETE", "phase");
+              const finalLogs = [...prev.logs, completionLog];
               const result = parseFinalOutput(finalContent, brand, prev.sessionId || "");
               result.startedAt = prev.startedAt;
-              result.logs = prev.logs;
+              result.logs = finalLogs;
               result.events = prev.events;
-              return { ...prev, phase: "complete", result };
+              return { ...prev, phase: "complete", result, logs: finalLogs };
             });
           }
           break;
@@ -892,15 +907,17 @@ export function useInvestigation() {
         setState((prev) => {
           if (prev.phase !== "complete" && prev.phase !== "error" && prev.phase !== "cancelled") {
             const finalContent = lastMessageRef.current || streamedDeltasRef.current;
+            const completionLog = makeLog("> INVESTIGATION COMPLETE", "phase");
+            const finalLogs = [...prev.logs, completionLog];
             const result = parseFinalOutput(finalContent, cleanBrand, prev.sessionId || "");
             result.startedAt = prev.startedAt;
-            result.logs = prev.logs;
+            result.logs = finalLogs;
             result.events = prev.events;
             return {
               ...prev,
               phase: "complete",
               result,
-              logs: [...prev.logs, makeLog("> INVESTIGATION COMPLETE", "phase")],
+              logs: finalLogs,
             };
           }
           return prev;
