@@ -2,7 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import type { InvestigationResult, DomainResult, DomainClassification, EvidenceSourceItem } from "@/lib/use-investigation";
+import {
+  type InvestigationResult,
+  type DomainResult,
+  type DomainClassification,
+  type EvidenceSourceItem,
+  extractUniqueToolNamesFromEvents,
+} from "@/lib/use-investigation";
 
 export default function InvestigationResultsPage() {
   // Real investigation results from TrueForge
@@ -306,7 +312,7 @@ function RealResultsView({
           <span className="text-[9px] font-data-mono text-on-tertiary-container/90">Dormant / Inactive</span>
         </div>
 
-        {/* 6. LEGITIMATE (Qodo Finding 6) */}
+        {/* 6. LEGITIMATE */}
         <div
           onClick={() => setFilter("LEGITIMATE")}
           className={`bg-retro-green text-on-background border-4 border-on-background p-3.5 shadow-brutal cursor-pointer hover:scale-[1.02] transition-transform ${
@@ -321,7 +327,7 @@ function RealResultsView({
         </div>
       </section>
 
-      {/* Investigation Timeline & Telemetry Section */}
+      {/* Investigation Timeline & Telemetry Section (Qodo Findings 1, 3, 4) */}
       <InvestigationTimelineSection
         result={result}
         showDetails={showTimelineDetails}
@@ -435,7 +441,7 @@ function RealResultsView({
   );
 }
 
-// ── Investigation Timeline Component (Qodo Findings 1 & 2) ─────────────
+// ── Investigation Timeline Component (Qodo Findings 1, 3, 4) ─────────────
 
 function InvestigationTimelineSection({
   result,
@@ -449,92 +455,83 @@ function InvestigationTimelineSection({
   const totalCandidates = result.domains.length;
   const totalSourcesCount = result.domains.reduce((acc, d) => acc + d.evidenceSources.length, 0);
 
-  // Extract tools used strictly from recorded events / logs (NEVER infer or fallback)
-  const toolsUsedSet = new Set<string>();
-  if (result.events && Array.isArray(result.events)) {
-    for (const ev of result.events) {
-      if (ev.type === "model.message" && ev.data && typeof ev.data === "object") {
-        const dataObj = ev.data as Record<string, unknown>;
-        if (Array.isArray(dataObj.toolCalls)) {
-          for (const tc of dataObj.toolCalls) {
-            if (typeof tc === "object" && tc !== null) {
-              const name = (tc as Record<string, unknown>).name || ((tc as Record<string, unknown>).function as Record<string, unknown>)?.name;
-              if (name) toolsUsedSet.add(String(name));
-            }
-          }
-        }
-      }
-    }
-  }
-  if (result.logs && Array.isArray(result.logs)) {
+  // Extract tools used strictly from recorded events using canonical extractor (Qodo Finding 4)
+  const recordedTools = extractUniqueToolNamesFromEvents(result.events);
+
+  // Fallback to logs only if tools were explicitly logged
+  if (recordedTools.length === 0 && result.logs && Array.isArray(result.logs)) {
     for (const log of result.logs) {
-      if (log.text.includes("web_search_exa")) toolsUsedSet.add("web_search_exa");
-      if (log.text.includes("web_fetch_exa")) toolsUsedSet.add("web_fetch_exa");
-      if (log.text.includes("domain-discovery")) toolsUsedSet.add("domain-discovery");
-      if (log.text.includes("domain-triage")) toolsUsedSet.add("domain-triage");
-      if (log.text.includes("evidence-reviewer")) toolsUsedSet.add("evidence-reviewer");
+      if (log.text.includes("web_search_exa") && !recordedTools.includes("web_search_exa")) recordedTools.push("web_search_exa");
+      if (log.text.includes("web_fetch_exa") && !recordedTools.includes("web_fetch_exa")) recordedTools.push("web_fetch_exa");
+      if (log.text.includes("domain-discovery") && !recordedTools.includes("domain-discovery")) recordedTools.push("domain-discovery");
+      if (log.text.includes("domain-triage") && !recordedTools.includes("domain-triage")) recordedTools.push("domain-triage");
+      if (log.text.includes("evidence-reviewer") && !recordedTools.includes("evidence-reviewer")) recordedTools.push("evidence-reviewer");
     }
   }
 
-  const toolsList = Array.from(toolsUsedSet);
-  const toolsDisplay = toolsList.length > 0 ? toolsList.join(", ") : "UNKNOWN / UNAVAILABLE";
+  const hasGenuineToolTelemetry = recordedTools.length > 0;
+  const toolsDisplay = hasGenuineToolTelemetry ? recordedTools.join(", ") : "UNKNOWN / UNAVAILABLE";
 
-  // Telemetry is verified ONLY when genuine recorded events exist and parse succeeded (Qodo Finding 2)
-  const isTelemetryVerified = Boolean(
-    result.events && result.events.length > 0 && result.parseSucceeded
-  );
+  // Telemetry is verified ONLY when genuine tool-call telemetry exists in recorded events (Qodo Finding 1)
+  const isTelemetryVerified = Boolean(hasGenuineToolTelemetry && result.parseSucceeded);
 
-  // Derive genuine milestone steps from investigation state (Qodo Finding 1: Never infer tools)
-  const discoveryToolName = toolsList.find((t) => t.includes("search") || t.includes("discovery")) || "UNKNOWN / UNAVAILABLE";
-  const triageToolName = toolsList.find((t) => t.includes("fetch") || t.includes("triage")) || "UNKNOWN / UNAVAILABLE";
-  const reviewToolName = toolsList.find((t) => t.includes("reviewer") || t.includes("evidence")) || "UNKNOWN / UNAVAILABLE";
+  // Check specific tool telemetry for individual timeline milestones (Qodo Finding 3)
+  const discoveryTool = recordedTools.find((t) => t.includes("search") || t.includes("discovery"));
+  const triageTool = recordedTools.find((t) => t.includes("fetch") || t.includes("triage"));
+  const historicalTool = recordedTools.find((t) => t.includes("search") || t.includes("intel") || t.includes("exa"));
+  const reviewTool = recordedTools.find((t) => t.includes("reviewer") || t.includes("evidence"));
 
-  const milestones = [
+  const milestones: {
+    title: string;
+    detail: string;
+    status: "completed" | "unavailable";
+    tool: string;
+  }[] = [
     {
       title: "Investigation started",
-      detail: `Session ${result.sessionId || "TF-AGENT"} initialized for target "${result.brand.toUpperCase()}".`,
-      status: "completed",
+      detail: result.sessionId ? `Session ${result.sessionId} initialized for brand "${result.brand.toUpperCase()}".` : "Session initialization unrecorded.",
+      status: result.sessionId ? "completed" : "unavailable",
       tool: result.sessionId ? "TrueForge Runtime" : "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Domain discovery",
-      detail: `Identified ${totalCandidates} candidate domain(s) for brand analysis.`,
-      status: "completed",
-      tool: discoveryToolName,
+      detail: discoveryTool ? `Identified ${totalCandidates} candidate domain(s) for brand analysis.` : "Discovery tool telemetry unrecorded.",
+      status: discoveryTool ? "completed" : "unavailable",
+      tool: discoveryTool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Candidate domains discovered",
-      detail: `${totalCandidates} domain name(s) queued for live inspection.`,
-      status: "completed",
-      tool: discoveryToolName,
+      detail: discoveryTool && totalCandidates > 0 ? `${totalCandidates} domain name(s) queued for live inspection.` : "Domain discovery telemetry unrecorded.",
+      status: discoveryTool && totalCandidates > 0 ? "completed" : "unavailable",
+      tool: discoveryTool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Live domain triage",
-      detail: `Live triage and content inspection conducted on candidates.`,
-      status: "completed",
-      tool: triageToolName,
+      detail: triageTool ? `Live triage and content inspection conducted on candidates.` : "Live triage tool telemetry unrecorded.",
+      status: triageTool ? "completed" : "unavailable",
+      tool: triageTool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Historical evidence collected",
-      detail: `${totalSourcesCount} evidence source reference(s) analyzed.`,
-      status: "completed",
-      tool: reviewToolName,
+      detail: historicalTool && totalSourcesCount > 0 ? `${totalSourcesCount} evidence source reference(s) analyzed.` : "Historical evidence tool telemetry unrecorded.",
+      status: historicalTool && totalSourcesCount > 0 ? "completed" : "unavailable",
+      tool: historicalTool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Evidence review",
-      detail: `Forensic review and classification validation completed.`,
-      status: "completed",
-      tool: reviewToolName,
+      detail: reviewTool ? `Forensic review and classification validation completed.` : "Evidence reviewer tool telemetry unrecorded.",
+      status: reviewTool ? "completed" : "unavailable",
+      tool: reviewTool || "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Classification complete",
-      detail: `All ${totalCandidates} candidates classified with assessment confidence.`,
-      status: "completed",
-      tool: "TrueForge Agent",
+      detail: result.parseSucceeded && totalCandidates > 0 ? `All ${totalCandidates} candidates classified with assessment confidence.` : "Classification unrecorded.",
+      status: result.parseSucceeded && totalCandidates > 0 ? "completed" : "unavailable",
+      tool: hasGenuineToolTelemetry ? "TrueForge Agent" : "UNKNOWN / UNAVAILABLE",
     },
     {
       title: "Human review required",
-      detail: `Findings sealed. Zero automated external actions taken.`,
+      detail: "Findings sealed. Zero automated external actions taken.",
       status: "completed",
       tool: "Human Safety Gate",
     },
@@ -558,7 +555,7 @@ function InvestigationTimelineSection({
           ) : (
             <div className="flex items-center gap-1.5 font-data-mono text-[11px] bg-surface-variant text-on-surface-variant px-2.5 py-1 border border-on-background font-bold">
               <span className="material-symbols-outlined text-sm text-on-surface-variant">info</span>
-              <span>TELEMETRY: UNRECORDED</span>
+              <span>TELEMETRY: UNAVAILABLE</span>
             </div>
           )}
           <button
@@ -572,16 +569,24 @@ function InvestigationTimelineSection({
 
       {showDetails && (
         <div className="mt-4 space-y-4 animate-in fade-in">
-          {/* Milestone checklist */}
+          {/* Milestone checklist (Qodo Finding 3: Reflects actual telemetry status) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {milestones.map((m, idx) => (
               <div
                 key={idx}
-                className="bg-surface-variant/40 border-2 border-on-background/40 p-2.5 flex flex-col justify-between"
+                className={`border-2 p-2.5 flex flex-col justify-between ${
+                  m.status === "completed"
+                    ? "bg-surface-variant/40 border-on-background/40"
+                    : "bg-surface-variant/20 border-on-background/20 opacity-80"
+                }`}
               >
                 <div>
                   <div className="flex items-center gap-1.5 font-data-mono text-xs font-black text-on-background">
-                    <span className="material-symbols-outlined text-retro-green text-sm font-bold">check_circle</span>
+                    {m.status === "completed" ? (
+                      <span className="material-symbols-outlined text-retro-green text-sm font-bold">check_circle</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-on-surface-variant text-sm font-bold">help_outline</span>
+                    )}
                     <span>{m.title}</span>
                   </div>
                   <p className="font-data-mono text-[10px] text-on-surface-variant mt-1 leading-snug">
@@ -598,7 +603,7 @@ function InvestigationTimelineSection({
             ))}
           </div>
 
-          {/* Operational Telemetry Summary */}
+          {/* Operational Telemetry Summary (Qodo Finding 1) */}
           <div className="bg-inverse-surface text-inverse-on-surface p-3 border-2 border-on-background font-data-mono text-xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4 flex-wrap">
               <span>
@@ -626,19 +631,15 @@ function InvestigationTimelineSection({
   );
 }
 
-// ── Domain Card Component (Qodo Findings 3, 4, 5) ──────────────────────
+// ── Domain Card Component (Qodo Findings 2, 4, 5) ──────────────────────
 
 function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) {
   const badge = classificationBadge(domain.classification);
   const risk = computeDeterministicRiskScore(domain);
 
-  // Derive per-domain provenance strictly from actual recorded data (Qodo Finding 3)
+  // Derive per-domain provenance strictly from actual recorded data (Qodo Finding 2: Never infer Live Inspection from observations)
   const discoveryTool = domain.discoveryTool || "UNKNOWN / UNAVAILABLE";
-  const liveTriageMethod = domain.triageMethod
-    ? domain.triageMethod
-    : (domain.currentObservations.length > 0
-        ? `Live Inspection (${domain.currentObservations.length} observation${domain.currentObservations.length > 1 ? "s" : ""})`
-        : "UNKNOWN / UNAVAILABLE");
+  const liveTriageMethod = domain.triageMethod || "UNKNOWN / UNAVAILABLE";
 
   const historicalSourceSummary = domain.evidenceSources.length > 0
     ? domain.evidenceSources.map(s => (typeof s === "object" ? s.name : s)).slice(0, 2).join(", ")
@@ -706,7 +707,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
           {domain.domain}
         </h3>
 
-        {/* EVIDENCE CHAIN / PROVENANCE (Qodo Finding 3) */}
+        {/* EVIDENCE CHAIN / PROVENANCE (Qodo Finding 2 & 3) */}
         <div className="mb-4 bg-surface-container border-2 border-on-background p-3 shadow-brutal-xs">
           <div className="flex items-center gap-1.5 mb-2 pb-1 border-b border-on-background/20 text-on-background font-label-caps text-[11px] font-black uppercase">
             <span className="material-symbols-outlined text-sm text-primary">account_tree</span>
@@ -820,7 +821,7 @@ function RealDomainCard({ domain, idx }: { domain: DomainResult; idx: number }) 
             </div>
           )}
 
-          {/* Evidence Sources (Qodo Finding 5: Safe user-clickable links only, no automatic remote images) */}
+          {/* Evidence Sources (Safe user-clickable links only, no automatic remote images) */}
           {domain.evidenceSources.length > 0 && (
             <div className="p-3 border border-on-background/20 bg-surface">
               <h4 className="font-label-caps text-[10px] text-on-surface-variant font-bold mb-1.5 flex items-center gap-1">

@@ -533,18 +533,74 @@ function extractTextFromModelMessage(event: Record<string, unknown>): string {
   return "";
 }
 
-function extractToolCallNames(event: Record<string, unknown>): string[] {
-  const toolCalls = event.toolCalls as unknown[];
-  if (!Array.isArray(toolCalls)) return [];
-  return toolCalls
-    .filter((tc): tc is Record<string, unknown> => typeof tc === "object" && tc !== null)
-    .map((tc) => {
-      const info = tc.toolInfo as Record<string, unknown> | undefined;
-      const name = tc.function
-        ? (tc.function as Record<string, unknown>).name
-        : info?.name || tc.name;
-      return String(name || "unknown_tool");
-    });
+/**
+ * Shared canonical tool name extractor from raw tool call item or object.
+ * Supports: function.name, toolInfo.name, and name / toolName / tool_name.
+ */
+export function extractCanonicalToolName(tc: unknown): string | null {
+  if (!tc || typeof tc !== "object") return null;
+  const obj = tc as Record<string, unknown>;
+  const fnObj = obj.function as Record<string, unknown> | undefined;
+  const infoObj = obj.toolInfo as Record<string, unknown> | undefined;
+
+  const candidate =
+    (fnObj && typeof fnObj.name === "string" ? fnObj.name : null) ||
+    (infoObj && typeof infoObj.name === "string" ? infoObj.name : null) ||
+    (typeof obj.name === "string" ? obj.name : null) ||
+    (typeof obj.toolName === "string" ? obj.toolName : null) ||
+    (typeof obj.tool_name === "string" ? obj.tool_name : null);
+
+  if (candidate && candidate.trim()) {
+    return candidate.trim();
+  }
+  return null;
+}
+
+/**
+ * Extract all canonical tool names called within a single event object.
+ * Handles both top-level and nested `data` envelopes.
+ */
+export function extractToolCallNames(event: Record<string, unknown>): string[] {
+  if (!event || typeof event !== "object") return [];
+  const data = (event.data && typeof event.data === "object" ? event.data : event) as Record<string, unknown>;
+  const rawCalls = data.toolCalls || data.tool_calls || event.toolCalls || event.tool_calls;
+
+  const names: string[] = [];
+
+  if (Array.isArray(rawCalls)) {
+    for (const tc of rawCalls) {
+      const name = extractCanonicalToolName(tc);
+      if (name && !names.includes(name)) {
+        names.push(name);
+      }
+    }
+  }
+
+  // Also check single toolInfo on event/data
+  const singleName = extractCanonicalToolName(data.toolInfo || event.toolInfo);
+  if (singleName && !names.includes(singleName)) {
+    names.push(singleName);
+  }
+
+  return names;
+}
+
+/**
+ * Extract all unique canonical tool names from a list of raw TrueForge events.
+ */
+export function extractUniqueToolNamesFromEvents(events?: RawTrueForgeEvent[]): string[] {
+  if (!events || !Array.isArray(events) || events.length === 0) return [];
+  const set = new Set<string>();
+
+  for (const ev of events) {
+    const evObj = (ev.data && typeof ev.data === "object" ? ev.data : ev) as Record<string, unknown>;
+    const names = extractToolCallNames(evObj);
+    for (const n of names) {
+      set.add(n);
+    }
+  }
+
+  return Array.from(set);
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────
