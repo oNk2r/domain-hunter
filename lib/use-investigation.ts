@@ -626,9 +626,9 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
   const stateObj = evData.state as Record<string, unknown> | undefined;
   const rawOutput = stateObj?.output ?? evData.output ?? evData.content ?? stateObj?.result ?? evData.result;
 
+  // A validated non-empty result payload is strictly required — status alone does not prove stage completion
   if (rawOutput === null || rawOutput === undefined) {
-    // Only accept empty output if status is explicitly done/completed
-    return status === "done" || status === "completed" || status === "success";
+    return false;
   }
 
   if (typeof rawOutput === "string") {
@@ -640,7 +640,7 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
     return rawOutput.length > 0;
   }
 
-  if (typeof rawOutput === "object") {
+  if (typeof rawOutput === "object" && rawOutput !== null) {
     const obj = rawOutput as Record<string, unknown>;
     const content = obj.content || obj.text || obj.result || obj.domains || obj.findings;
     if (typeof content === "string") {
@@ -650,7 +650,17 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
     if (Array.isArray(content)) {
       return content.length > 0;
     }
-    return Object.keys(obj).length > 0 && (status === "done" || status === "completed" || status === "success");
+    const nonStatusKeys = Object.keys(obj).filter(
+      (k) => k !== "status" && k !== "id" && k !== "thread_id" && k !== "threadId" && k !== "type"
+    );
+    if (nonStatusKeys.length === 0) return false;
+    return nonStatusKeys.some((k) => {
+      const v = obj[k];
+      if (typeof v === "string") return v.trim().length > 0 && v.trim() !== "{}" && v.trim() !== "[]";
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === "object" && v !== null) return Object.keys(v).length > 0;
+      return typeof v === "number" || typeof v === "boolean";
+    });
   }
 
   return false;
