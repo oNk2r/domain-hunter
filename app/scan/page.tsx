@@ -302,24 +302,65 @@ function InvestigationProgressContent() {
 
       {/* Error Banner with retry */}
       {phase === "error" && (
-        <div className="mb-6 bg-error text-white border-4 border-on-background p-4 shadow-brutal flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-3xl font-black">error</span>
-            <div>
-              <h3 className="font-headline-md text-xl font-black uppercase">
-                {error?.includes("INVESTIGATION FAILED") ? "INVESTIGATION FAILED" : "SCAN INTERRUPTED"}
-              </h3>
-              <p className="font-data-mono text-xs opacity-90">{error || "Agent connection failed. Please retry."}</p>
+        error?.includes("TRUEFORGE RUNTIME UNAVAILABLE") || error?.includes("UNAVAILABLE") ? (
+          <div className="mb-6 bg-surface border-4 border-on-background p-6 shadow-brutal flex flex-col md:flex-row items-start md:items-center justify-between gap-6 animate-in fade-in">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-retro-yellow border-2 border-on-background flex items-center justify-center shadow-brutal-xs shrink-0 mt-0.5">
+                <span className="material-symbols-outlined text-2xl text-on-background font-black">dns</span>
+              </div>
+              <div>
+                <div className="inline-block bg-retro-yellow text-on-background px-2.5 py-0.5 border border-on-background font-label-caps font-black text-[10px] mb-1.5 shadow-brutal-xs">
+                  PREVIEW DEPLOYMENT
+                </div>
+                <h3 className="font-headline-md text-xl sm:text-2xl font-black uppercase text-on-background">
+                  TRUEFORGE RUNTIME UNAVAILABLE
+                </h3>
+                <p className="font-data-mono text-xs sm:text-sm text-on-surface-variant mt-1 leading-relaxed max-w-xl">
+                  This preview deployment does not have access to the local TrueForge runtime.
+                  <br />
+                  Run Domain Hunter locally for live investigations.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="https://github.com/oNk2r/domain-hunter#running-locally"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3 bg-primary-container text-on-primary-container font-headline-md text-sm border-2 border-on-background shadow-brutal-sm btn-brutal whitespace-nowrap font-black flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-base">terminal</span>
+                <span>RUN LOCALLY</span>
+              </Link>
+              <button
+                onClick={handleRetry}
+                className="px-4 py-3 bg-surface text-on-background font-headline-md text-sm border-2 border-on-background shadow-brutal-xs btn-brutal whitespace-nowrap font-bold flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-base">restart_alt</span>
+                <span>RETRY</span>
+              </button>
             </div>
           </div>
-          <button
-            onClick={handleRetry}
-            className="px-6 py-3 bg-surface text-on-background font-headline-md text-sm border-2 border-on-background shadow-brutal-sm btn-brutal whitespace-nowrap font-black flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined">restart_alt</span>
-            <span>RETRY INVESTIGATION</span>
-          </button>
-        </div>
+        ) : (
+          <div className="mb-6 bg-error text-white border-4 border-on-background p-4 shadow-brutal flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-3xl font-black">error</span>
+              <div>
+                <h3 className="font-headline-md text-xl font-black uppercase">
+                  {error?.includes("INVESTIGATION FAILED") ? "INVESTIGATION FAILED" : "SCAN INTERRUPTED"}
+                </h3>
+                <p className="font-data-mono text-xs opacity-90">{error || "Agent connection failed. Please retry."}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRetry}
+              className="px-6 py-3 bg-surface text-on-background font-headline-md text-sm border-2 border-on-background shadow-brutal-sm btn-brutal whitespace-nowrap font-black flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined">restart_alt</span>
+              <span>RETRY INVESTIGATION</span>
+            </button>
+          </div>
+        )
       )}
 
       {/* Main Investigation Canvas */}

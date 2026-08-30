@@ -1,183 +1,143 @@
-# 🕵️ Domain Hunter — AI Brand Impersonation Agent
+# Domain Hunter
 
-> **Built for The Agent Harness Hackathon 2026**  
-> *"Give AI models a license to act"*
-
-Domain Hunter is an AI-powered investigation agent that discovers, triages, and forensically analyses domains impersonating your brand — then keeps a human firmly in control of every consequential action.
-
-A chatbot tells you there *might* be a phishing site. Domain Hunter **finds it, proves it, and waits for your approval before doing anything about it.**
+An evidence-first brand impersonation investigation agent built on TrueForge.
 
 ---
 
-## Problem
+## What it does
 
-Brand impersonation costs companies billions every year. Phishing domains appear overnight — cloning login pages, harvesting credentials, and deceiving customers. Security teams have to manually monitor Certificate Transparency logs, WHOIS records, and DNS buffers, then cross-reference findings with web evidence before they can act.
+Domain Hunter discovers suspicious domains associated with a brand, performs live triage, separates current observations from historical threat intelligence, and produces an evidence-backed classification for human review.
 
-This is exactly the kind of painful, multi-step, tool-heavy workflow that an AI agent should handle — with a human staying firmly in control at the moment of action.
-
----
-
-## Solution
-
-Domain Hunter is a **TrueForge agent** that runs an automated investigation pipeline:
-
-```
-User enters brand name
-        ↓
-TrueForge Agent starts
-        ↓
-Domain Discovery  (Certificate Transparency + DNS buffers)
-        ↓
-Domain Triage     (Registration date, IP geo, SSL check)
-        ↓
-Web Research      (EXA MCP — live web evidence)
-        ↓
-Sandbox Inspection (Daytona — safe code/DOM analysis)
-        ↓
-Evidence Review   (forensic classification per domain)
-        ↓
-Final Verdict     (confidence-scored dossier)
-        ↓
-⛔ HUMAN APPROVAL GATE ⛔
-        ↓
-Takedown Notice Dispatched
-```
-
----
-
-## Demo
-
-> 📹 **[Watch the 3-minute demo video](#)** *(link — add after recording)*
+A standard conversational chatbot can speculate that a phishing domain exists. Domain Hunter **discovers candidate domains via verified logs, inspects active infrastructure and live content, audits evidence provenance, and gates consequential takedown actions behind human approval.**
 
 ---
 
 ## Architecture
 
+```mermaid
+graph TD
+    Browser["Browser (Next.js 15 UI)"]
+    NextAPI["Next.js API Layer (/api/investigate)"]
+    TrueForge["TrueForge Runtime (Local Agent Harness :8790)"]
+    
+    subgraph AgentPipeline ["Domain Hunter Agent"]
+        Discovery["Domain Discovery Subagent"]
+        Triage["Domain Triage Subagent"]
+        Evidence["Evidence Reviewer Subagent"]
+    end
+    
+    subgraph ToolsHarness ["MCP & Sandbox Tools"]
+        Exa["Exa MCP (web_search / web_fetch)"]
+        Sandbox["Daytona Sandbox (DOM & Network Probing)"]
+    end
+    
+    Result["Validated Investigation Result"]
+    ApprovalGate["⛔ Human Approval Gate"]
+
+    Browser --> NextAPI
+    NextAPI --> TrueForge
+    TrueForge --> Discovery
+    Discovery --> Triage
+    Triage --> Evidence
+    Discovery -.-> Exa
+    Triage -.-> Sandbox
+    Evidence -.-> Exa
+    Evidence --> Result
+    Result --> ApprovalGate
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        User (Browser)                    │
-│                    Next.js 15 UI (Port 3000)             │
-└─────────────────┬───────────────────────────────────────┘
-                  │  POST /api/investigate (brand)
-                  ▼
-┌─────────────────────────────────────────────────────────┐
-│              Next.js API Route (route.ts)                │
-│  Creates TrueForge session → starts turn → SSE proxy     │
-└─────────────────┬───────────────────────────────────────┘
-                  │  SSE event stream
-                  ▼
-┌─────────────────────────────────────────────────────────┐
-│              TrueForge Agent Runtime (Port 8790)         │
-│                  Agent: "domain-hunter"                  │
-│                                                          │
-│   ┌────────────┐  ┌────────────┐  ┌──────────────────┐  │
-│   │ Domain     │  │ Evidence   │  │  Final           │  │
-│   │ Discovery  │  │ Reviewer   │  │  Assessment      │  │
-│   │ Subagent   │  │ Subagent   │  │  Subagent        │  │
-│   └─────┬──────┘  └─────┬──────┘  └──────────────────┘  │
-│         │               │                                 │
-│         ▼               ▼                                 │
-│   ┌─────────────┐  ┌──────────────────────────────────┐  │
-│   │  EXA MCP    │  │  Daytona Sandbox (code execution) │  │
-│   │  web_search │  │  Safe DOM inspection, network     │  │
-│   │  web_fetch  │  │  telemetry, JS analysis           │  │
-│   └─────────────┘  └──────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                  │
-                  ▼  tool.approval_required event
-┌─────────────────────────────────────────────────────────┐
-│              ⛔ HUMAN APPROVAL MODAL ⛔                  │
-│   Agent STOPS — shows proposed action to user            │
-│   [Authorize] → Agent continues                          │
-│   [Reject]    → Agent stops, no action taken             │
-└─────────────────────────────────────────────────────────┘
-```
+
+> **Deployment Architecture:**  
+> The public Vercel deployment is a UI preview. The complete live investigation pipeline requires a local TrueForge runtime (`http://localhost:8790`). Localhost is used as the local developer and agent execution harness, not as public production infrastructure.
 
 ---
 
-## How TrueForge Is Used
+## Investigation Workflow
 
-TrueForge is the **execution runtime** — not a chatbot wrapper. Removing TrueForge leaves zero investigation capability.
+1. **Brand input** — User specifies the target brand name.
+2. **Domain discovery** — Agent queries Certificate Transparency logs, DNS buffers, and search indices for lookalike domains.
+3. **Candidate extraction** — Discovered domains are extracted strictly from telemetry results.
+4. **Live domain triage** — Probes active DNS records, IP geo-location, HTTP response headers, and SSL certificates.
+5. **Historical evidence collection** — Aggregates public web intelligence and historical reputation feeds via Exa MCP.
+6. **Evidence review** — Cross-references live observations against historical intel to eliminate false positives.
+7. **Classification** — Evaluates forensic evidence to assign a confidence-scored classification.
+8. **Human review** — Hard-blocking approval gate requires explicit operator consent before any external action.
+9. **Final report** — Compiles a cryptographic evidence dossier and legal takedown notices (Abuse, DMCA, UDRP).
 
-| TrueForge Capability | How Domain Hunter uses it |
+---
+
+## Evidence Integrity
+
+- **No guessed domains:** Candidate domains must originate directly from actual discovery results and telemetry logs.
+- **Separation of state:** Current observations (active DNS, HTTP status, DOM artifacts) and historical records are strictly segregated.
+- **Honest telemetry:** Missing or unverified telemetry is explicitly marked as `UNKNOWN` or `UNAVAILABLE` rather than assumed or synthesized.
+- **Temporal distinction:** Historical threat evidence does not prove current active impersonation.
+- **Proper lifecycle handling:** Inactive or parked domains are classified as `PARKED_OR_INACTIVE`.
+- **Human-in-the-Loop:** Consequential recommendations (such as automated takedowns or registrar abuse reporting) require manual analyst authorization.
+
+---
+
+## Classifications
+
+| Classification | Meaning |
 |---|---|
-| **Agent Sessions** | Each investigation creates a persistent TrueForge session (returned as `X-TrueForge-Session` header) |
-| **MCP Tools** | EXA MCP provides `web_search_exa` + `web_fetch_exa` for live domain evidence |
-| **Subagents** | Domain Discovery, Evidence Reviewer, and Final Assessment run as dedicated subagent threads |
-| **Sandbox (Daytona)** | Generated DOM inspection code runs inside an isolated Daytona workspace |
-| **Human Approval** | `tool.approval_required` TrueForge event gates action — UI hard-blocks until user responds |
-| **Persistent Sessions** | Session ID preserved in state; cancel API calls TrueForge's server-side cancellation endpoint |
-| **Skills** | Investigation protocol loaded from `SKILL.md` at agent start |
-| **SSE Streaming** | Real-time event stream surfaces phase advances, tool calls, subagent starts to UI |
+| **`LEGITIMATE`** | Official brand asset or verified infrastructure with confirmed legitimate ownership. |
+| **`SUSPICIOUS`** | Deceptive naming patterns, typo-squatting, or conflicting records requiring active monitoring. |
+| **`LIKELY_IMPERSONATION`** | High-confidence active brand impersonation, credential harvesting forms, or cloned assets. |
+| **`INCONCLUSIVE`** | Telemetry is contradictory or insufficient to make a definitive risk determination. |
+| **`PARKED_OR_INACTIVE`** | Registered domain with no live hosting, MX records, or deceptive web content. |
 
 ---
 
-## MCP Tools
+## TrueForge
 
-### EXA Search & Fetch
+TrueForge provides the execution harness that powers Domain Hunter:
 
-Configured in **TrueForge → Settings → Connectors**:
-
-- **`web_search_exa`** — discovers public web evidence of phishing activity for each candidate domain  
-- **`web_fetch_exa`** — fetches page content from suspicious domains for DOM analysis
-
-> Set your EXA API key inside TrueForge's connector settings — not in this app's `.env`.
-
----
-
-## Sandbox
-
-Generated code for DOM inspection and network telemetry runs inside a **Daytona sandbox workspace** managed by TrueForge.
-
-Configure the Daytona sandbox provider in:
-```
-TrueForge → Settings → Sandbox providers
-```
-
-The `sandbox.created` event is surfaced in the Live Telemetry Feed and advances the investigation phase indicator.
+- **Agent Sessions:** Manages multi-turn stateful investigation lifecycles.
+- **Sandbox Execution:** Runs safe DOM inspection and network probes inside isolated Daytona workspaces.
+- **MCP Tool Integration:** Connects EXA MCP (`web_search_exa`, `web_fetch_exa`) for public domain research.
+- **Streaming Events:** Streams granular SSE events (phases, tool executions, subagent threads) to the UI in real time.
+- **Human-in-the-Loop Orchestration:** Pauses execution turns on `tool.approval_required` events until operator approval is granted.
 
 ---
 
-## Human Approval
+## Demo
 
-When TrueForge fires a `tool.approval_required` event, Domain Hunter:
-
-1. **Hard-pauses** the investigation (log shows `⛔ WAITING FOR HUMAN APPROVAL`)
-2. **Surfaces a blocking modal** showing the proposed action and tool name
-3. Waits for the user to click **[AUTHORIZE]** or **[REJECT]**
-4. Calls back to TrueForge's session API to resume or cancel the agent turn
-
-A second human authorization is required inside the **Takedown Modal** before any registrar abuse / DMCA / UDRP notice is dispatched.
+- **Vercel UI Preview:** Deployed on Vercel as a publicly accessible UI preview.
+- **Local Live Demo:** Full end-to-end investigation with live agent execution runs locally with TrueForge.
+- **Representative Merged PR:** [PR #4: fix: remediate Qodo investigation integrity findings](https://github.com/oNk2r/domain-hunter/pull/4)
 
 ---
 
-## Subagents
+## Qodo Code Review Evidence
 
-The `domain-hunter` TrueForge agent spawns three subagents (visible via `thread.created` events):
-
-| Subagent | Role |
-|---|---|
-| `domain-discovery` | Discovers candidate impersonating domains from CT logs and DNS |
-| `evidence-reviewer` | Validates forensic evidence per domain |
-| `final-assessment` | Compiles the confidence-scored dossier |
-
-Each subagent start is shown as a highlighted badge in the Live Telemetry Feed.
+- **Representative Merged PR:** [https://github.com/oNk2r/domain-hunter/pull/4](https://github.com/oNk2r/domain-hunter/pull/4)
+- **Summary of Findings:** Qodo conducted an automated security and integrity audit on the Domain Hunter codebase. Findings highlighted:
+  1. Telemetry verification and timeline milestones were coupled to log-derived tool strings rather than explicit SSE event payloads.
+  2. Potential race condition where stage proven milestones could trigger before non-empty subagent result payloads were recorded.
+  3. Inconsistencies in confidence calculation where missing telemetry could produce ambiguous or default score values.
+  4. Subagent error handling needing normalization for object-wrapped error returns.
+- **What Was Fixed:**
+  1. Decoupled telemetry verification and timeline milestones from log string parsing; implemented `extractStageTelemetryFromEvents` to verify milestones strictly from explicit SSE events.
+  2. Added payload validation in `isValidSubagentResult` to ensure non-empty results before marking investigation stages proven.
+  3. Enforced explicit handling of missing confidence data as `UNKNOWN / UNAVAILABLE` with deterministic scoring fallback.
+  4. Applied normalized error string validation to object-wrapped subagent outputs.
+- **Follow-up Review:** A follow-up Qodo review was performed on the remediation branch, confirming that all evidence integrity and telemetry provenance issues were fully resolved.
+- **Final PR Status:** Merged into `main`.
 
 ---
 
-## Setup
+## Running Locally
 
 ### Prerequisites
 
-- Node.js 22+
-- TrueForge running locally: `npx @truefoundry/trueforge`
-- An EXA API key (for MCP web search)
-- (Optional) Daytona account for sandbox execution
+- Node.js 18+ or 20+
+- TrueForge runtime installed locally (`npx @truefoundry/trueforge`)
+- EXA API key (configured inside TrueForge for MCP web search)
 
-### 1. Clone the repo
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-handle>/domain-hunter
+git clone https://github.com/oNk2r/domain-hunter.git
 cd domain-hunter
 ```
 
@@ -187,91 +147,25 @@ cd domain-hunter
 npm install
 ```
 
-### 3. Copy environment variables
+### 3. Start TrueForge Runtime
 
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local`:
-
-```env
-TRUEFORGE_URL=http://localhost:8790
-```
-
-### 4. Start TrueForge
+In a separate terminal, launch the local TrueForge agent runtime:
 
 ```bash
 npx @truefoundry/trueforge
 ```
 
-Then open [http://localhost:8790](http://localhost:8790) and:
+TrueForge will start at `http://localhost:8790`.
 
-1. **Settings → Models** — add your model provider + API key
-2. **Settings → Connectors** — add the EXA MCP server with your EXA API key
-3. **Settings → Sandbox providers** — add Daytona (optional)
-4. Create an agent named **`domain-hunter`** using these connectors
+1. Open `http://localhost:8790` in your browser.
+2. In **Settings → Models**, configure your LLM provider.
+3. In **Settings → Connectors**, configure the EXA MCP server.
+4. Ensure an agent named `domain-hunter` is configured with MCP tools enabled.
 
-### 5. Run the app
+### 4. Start Next.js Development Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `TRUEFORGE_URL` | ✅ | URL of your local TrueForge instance (default: `http://localhost:8790`) |
-
-> MCP API keys (EXA, etc.) are configured directly inside TrueForge — not in this app's `.env`.
-
----
-
-## Running Locally
-
-```bash
-npm run dev      # Development server with hot reload
-npm run build    # Production build
-npm run lint     # ESLint check
-```
-
----
-
-## Example Workflow
-
-1. Open [http://localhost:3000](http://localhost:3000)
-2. Enter a brand name (e.g. `Stripe`) and click **START INVESTIGATION**
-3. Watch the Live Telemetry Feed as TrueForge:
-   - Creates a session
-   - Spawns Domain Discovery subagent (shown as badge in feed)
-   - Calls EXA MCP to search for suspicious domains
-   - Runs Daytona sandbox to inspect page content
-   - Spawns Evidence Reviewer subagent
-4. When TrueForge reaches a consequential action, the UI **hard-pauses** and shows a Human Approval modal
-5. **[Authorize]** → investigation continues | **[Reject]** → agent stops cleanly
-6. Results page shows every domain with confidence scores, evidence, and classification
-7. For suspicious domains, click **AUTHORIZE TAKEDOWN** to generate a registrar abuse / DMCA / UDRP notice
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Agent Runtime | TrueForge (`@truefoundry/trueforge-sdk ^0.1.3`) |
-| Web Search | EXA (`web_search_exa`, `web_fetch_exa` via MCP) |
-| Sandbox | Daytona (via TrueForge sandbox provider) |
-| Frontend | Next.js 15, React 19, TypeScript |
-| Styling | TailwindCSS 3, custom brutalist design tokens |
-| State Management | React hooks + SSE streaming |
-
----
-
-## License
-
-MIT
+Open [http://localhost:3000](http://localhost:3000) to start live investigations.

@@ -1068,6 +1068,26 @@ export function useInvestigation() {
           } catch {
             // ignore JSON parse error
           }
+
+          if (
+            response.status === 503 ||
+            errorMsg.includes("TRUEFORGE RUNTIME UNAVAILABLE") ||
+            errorMsg.includes("ECONNREFUSED") ||
+            errorMsg.includes("fetch failed")
+          ) {
+            errorMsg = "TRUEFORGE RUNTIME UNAVAILABLE";
+            setState((prev) => ({
+              ...prev,
+              phase: "error",
+              error: errorMsg,
+              logs: [
+                ...prev.logs,
+                makeLog("> TRUEFORGE RUNTIME UNAVAILABLE — Local runtime required for live investigations", "error"),
+              ],
+            }));
+            return;
+          }
+
           setState((prev) => ({
             ...prev,
             phase: "error",
@@ -1162,11 +1182,25 @@ export function useInvestigation() {
           return;
         }
         const msg = err instanceof Error ? err.message : "Unknown error";
+        const isUnavailable =
+          msg.includes("fetch failed") ||
+          msg.includes("Failed to fetch") ||
+          msg.includes("ECONNREFUSED");
+
+        const displayMsg = isUnavailable ? "TRUEFORGE RUNTIME UNAVAILABLE" : msg;
         setState((prev) => ({
           ...prev,
           phase: "error",
-          error: msg,
-          logs: [...prev.logs, makeLog(`> ERROR: ${msg}`, "error")],
+          error: displayMsg,
+          logs: [
+            ...prev.logs,
+            makeLog(
+              isUnavailable
+                ? "> TRUEFORGE RUNTIME UNAVAILABLE — Local runtime required for live investigations"
+                : `> ERROR: ${msg}`,
+              "error"
+            ),
+          ],
         }));
       }
     },

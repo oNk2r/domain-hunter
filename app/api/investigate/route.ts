@@ -45,11 +45,19 @@ export async function POST(request: Request) {
 
     if (!sessionResponse.ok) {
       const details = await sessionResponse.text();
+      const isUnavailable =
+        sessionResponse.status === 404 ||
+        sessionResponse.status === 502 ||
+        sessionResponse.status === 503 ||
+        sessionResponse.status === 504;
 
       return NextResponse.json(
         {
-          error: "Could not create TrueForge session",
-          details,
+          error: isUnavailable ? "TRUEFORGE RUNTIME UNAVAILABLE" : "Could not create TrueForge session",
+          details: isUnavailable
+            ? "This preview deployment does not have access to the local TrueForge runtime. Run Domain Hunter locally for live investigations."
+            : details,
+          isRuntimeUnavailable: isUnavailable,
         },
         { status: sessionResponse.status }
       );
@@ -134,14 +142,25 @@ Do not contact domain owners, submit reports, request takedowns, or perform othe
   } catch (error) {
     console.error("Domain Hunter error:", error);
 
+    const message = error instanceof Error ? error.message : "Investigation failed";
+    const isConnRefused =
+      message.includes("ECONNREFUSED") ||
+      message.includes("fetch failed") ||
+      message.includes("Failed to fetch") ||
+      message.includes("ENOTFOUND") ||
+      message.includes("connect");
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Investigation failed",
+        error: isConnRefused
+          ? "TRUEFORGE RUNTIME UNAVAILABLE"
+          : message,
+        details: isConnRefused
+          ? "This preview deployment does not have access to the local TrueForge runtime. Run Domain Hunter locally for live investigations."
+          : message,
+        isRuntimeUnavailable: isConnRefused,
       },
-      { status: 500 }
+      { status: isConnRefused ? 503 : 500 }
     );
   }
 }

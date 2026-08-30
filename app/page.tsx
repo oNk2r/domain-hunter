@@ -402,11 +402,145 @@ export default function LandingPage() {
               className="font-label-caps text-xs text-primary font-bold hover:underline flex items-center gap-1 bg-surface border-2 border-on-background px-3 py-1.5 shadow-brutal-xs btn-brutal"
             >
               <span className="material-symbols-outlined text-sm">play_arrow</span>
-              RUN LIVE INTERACTIVE DEMO →
+              RUN LIVE SCAN →
             </Link>
           </div>
 
           <ExampleInvestigationAnimation />
+        </div>
+
+        {/* Investigation Architecture Section */}
+        <div className="w-full mt-16 text-left">
+          <div className="flex items-center gap-3 mb-6 border-b-border-width-thick border-on-background pb-3">
+            <span className="material-symbols-outlined text-2xl text-primary font-black">schema</span>
+            <h2 className="font-headline-lg text-2xl sm:text-3xl uppercase">
+              INVESTIGATION ARCHITECTURE
+            </h2>
+          </div>
+
+          <div className="bg-surface border-4 border-on-background p-6 shadow-brutal">
+            {/* Architecture Flow Diagram */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 font-data-mono text-xs items-stretch mb-6">
+              <div className="bg-surface-container border-2 border-on-background p-3 shadow-brutal-xs flex flex-col justify-between">
+                <div className="font-label-caps text-[10px] text-on-surface-variant font-bold mb-1">CLIENT LAYER</div>
+                <div className="font-bold text-primary text-sm">Browser (Next.js 15)</div>
+                <div className="text-[10px] text-on-surface-variant mt-2">Vercel UI Preview / Local</div>
+              </div>
+
+              <div className="flex items-center justify-center font-bold text-lg text-on-surface-variant rotate-90 md:rotate-0">
+                →
+              </div>
+
+              <div className="bg-surface-container border-2 border-on-background p-3 shadow-brutal-xs flex flex-col justify-between md:col-span-1">
+                <div className="font-label-caps text-[10px] text-on-surface-variant font-bold mb-1">RUNTIME LAYER</div>
+                <div className="font-bold text-on-background text-sm">TrueForge Runtime</div>
+                <div className="text-[10px] text-on-surface-variant mt-2">Local Agent Harness (Port 8790)</div>
+              </div>
+
+              <div className="flex items-center justify-center font-bold text-lg text-on-surface-variant rotate-90 md:rotate-0">
+                →
+              </div>
+
+              <div className="bg-primary-container text-on-primary-container border-2 border-on-background p-3 shadow-brutal-xs flex flex-col justify-between">
+                <div className="font-label-caps text-[10px] font-bold mb-1">EXECUTION ENGINE</div>
+                <div className="font-bold text-sm">Domain Hunter Agent</div>
+                <div className="text-[10px] opacity-90 mt-2">Discovery • Triage • Evidence</div>
+              </div>
+            </div>
+
+            {/* Sub-agents & MCP connectors breakdown */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-data-mono text-xs pt-4 border-t-2 border-on-background">
+              <div className="border-2 border-dashed border-on-background/40 p-3 bg-surface-variant/30">
+                <div className="font-headline-sm text-xs text-primary font-bold mb-1">1. DOMAIN DISCOVERY</div>
+                <p className="text-[11px] text-on-surface-variant">
+                  Crawls Certificate Transparency logs and DNS buffers for deceptive lookalike candidates.
+                </p>
+              </div>
+              <div className="border-2 border-dashed border-on-background/40 p-3 bg-surface-variant/30">
+                <div className="font-headline-sm text-xs text-secondary font-bold mb-1">2. LIVE DOMAIN TRIAGE</div>
+                <p className="text-[11px] text-on-surface-variant">
+                  Probes active DNS, SSL certificates, and IP geo-reputation. Fetches web data safely.
+                </p>
+              </div>
+              <div className="border-2 border-dashed border-on-background/40 p-3 bg-surface-variant/30">
+                <div className="font-headline-sm text-xs text-tertiary font-bold mb-1">3. EVIDENCE REVIEW</div>
+                <p className="text-[11px] text-on-surface-variant">
+                  Validates current observations vs historical records. Gates consequential actions behind human approval.
+                </p>
+              </div>
+            </div>
+
+            {/* Public vs Local Runtime Statement */}
+            <div className="mt-5 p-3 bg-retro-yellow/30 border-2 border-on-background font-data-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-base">info</span>
+                <span className="text-on-background">
+                  <strong>Deployment Architecture:</strong> The public Vercel deployment is a UI preview. Complete live investigations run with the local TrueForge runtime.
+                </span>
+              </div>
+              <Link
+                href="https://github.com/oNk2r/domain-hunter#running-locally"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 bg-surface text-on-background border border-on-background font-bold text-[11px] hover:bg-surface-variant whitespace-nowrap shadow-brutal-xs flex items-center gap-1 shrink-0"
+              >
+                <span>SETUP GUIDE</span>
+                <span className="material-symbols-outlined text-xs">open_in_new</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* What Makes Domain Hunter Different */}
+        <div className="w-full mt-16 text-left">
+          <div className="flex items-center gap-3 mb-6 border-b-border-width-thick border-on-background pb-3">
+            <span className="material-symbols-outlined text-2xl text-primary font-black">verified_user</span>
+            <h2 className="font-headline-lg text-2xl sm:text-3xl uppercase">
+              EVIDENCE INTEGRITY FIRST
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-surface border-4 border-on-background p-5 shadow-brutal">
+              <h3 className="font-headline-md text-lg font-black uppercase text-primary mb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined">rule</span>
+                <span>NO HALLUCINATED DOMAINS</span>
+              </h3>
+              <p className="font-body-lg text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                Candidate domains must originate directly from actual Certificate Transparency logs, DNS records, or search discovery. The agent never hallucinates or guesses unverified domain names.
+              </p>
+            </div>
+
+            <div className="bg-surface border-4 border-on-background p-5 shadow-brutal">
+              <h3 className="font-headline-md text-lg font-black uppercase text-primary mb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined">history_edu</span>
+                <span>SEPARATED OBSERVATIONS & INTEL</span>
+              </h3>
+              <p className="font-body-lg text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                Current live observations (DNS, HTTP headers, DOM artifacts) are rigorously separated from historical threat intelligence. Historical records never falsely prove current activity.
+              </p>
+            </div>
+
+            <div className="bg-surface border-4 border-on-background p-5 shadow-brutal">
+              <h3 className="font-headline-md text-lg font-black uppercase text-primary mb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined">visibility_off</span>
+                <span>HONEST TELEMETRY GAPS</span>
+              </h3>
+              <p className="font-body-lg text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                Missing data is explicitly flagged as UNKNOWN or UNAVAILABLE. The system never injects default numbers or synthetic confidence scores when telemetry is unavailable.
+              </p>
+            </div>
+
+            <div className="bg-surface border-4 border-on-background p-5 shadow-brutal">
+              <h3 className="font-headline-md text-lg font-black uppercase text-primary mb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined">gavel</span>
+                <span>HUMAN-IN-THE-LOOP GATING</span>
+              </h3>
+              <p className="font-body-lg text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                Consequential recommendations (such as registrar abuse reporting and DMCA notices) require explicit human analyst authorization before execution.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
