@@ -611,6 +611,51 @@ export interface RecordedStageTelemetry {
   evidenceReview: { proven: boolean; tool?: string };
 }
 
+function isValidSubagentResult(evData: Record<string, unknown>): boolean {
+  // Check for error statuses
+  const status = String(
+    (evData.state as Record<string, unknown>)?.status ||
+    evData.status ||
+    ""
+  ).toLowerCase();
+  if (status === "error" || status === "failed" || status === "cancelled") {
+    return false;
+  }
+
+  // Check state.output, output, content, or result
+  const stateObj = evData.state as Record<string, unknown> | undefined;
+  const rawOutput = stateObj?.output ?? evData.output ?? evData.content ?? stateObj?.result ?? evData.result;
+
+  if (rawOutput === null || rawOutput === undefined) {
+    // Only accept empty output if status is explicitly done/completed
+    return status === "done" || status === "completed" || status === "success";
+  }
+
+  if (typeof rawOutput === "string") {
+    const trimmed = rawOutput.trim();
+    return trimmed.length > 0 && trimmed !== "{}" && trimmed !== "[]" && !trimmed.toLowerCase().startsWith("error");
+  }
+
+  if (Array.isArray(rawOutput)) {
+    return rawOutput.length > 0;
+  }
+
+  if (typeof rawOutput === "object") {
+    const obj = rawOutput as Record<string, unknown>;
+    const content = obj.content || obj.text || obj.result || obj.domains || obj.findings;
+    if (typeof content === "string") {
+      const trimmed = content.trim();
+      return trimmed.length > 0 && trimmed !== "{}" && trimmed !== "[]";
+    }
+    if (Array.isArray(content)) {
+      return content.length > 0;
+    }
+    return Object.keys(obj).length > 0 && (status === "done" || status === "completed" || status === "success");
+  }
+
+  return false;
+}
+
 /**
  * Extract proven investigation stage telemetry by evaluating explicit thread metadata
  * and tool calls scoped to specific stages, rather than loose global substring matching.
@@ -652,13 +697,11 @@ export function extractStageTelemetryFromEvents(events?: RawTrueForgeEvent[]): R
       }
     }
 
-    // 2. Thread completion with valid output
+    // 2. Thread completion with validated, non-empty result payload
     if (type === "thread.done") {
       const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
       const threadStage = threadId ? threadStageMap.get(threadId) : undefined;
-      const stateObj = (evData.state || evData.output) as Record<string, unknown> | undefined;
-      const hasContent = Boolean(stateObj?.output || evData.output || evData.content);
-      if (threadStage && hasContent) {
+      if (threadStage && isValidSubagentResult(evData)) {
         telemetry[threadStage].proven = true;
       }
     }
