@@ -528,7 +528,7 @@ function InvestigationTimelineSection({
     },
     {
       title: "Classification complete",
-      detail: result.parseSucceeded && totalCandidates > 0 ? `All ${totalCandidates} candidates classified with assessment confidence.` : "Classification unrecorded.",
+      detail: result.parseSucceeded && totalCandidates > 0 ? `All ${totalCandidates} candidate domain(s) structured and classified.` : "Classification unrecorded.",
       status: result.parseSucceeded && totalCandidates > 0 ? "completed" : "unavailable",
       tool: hasGenuineToolTelemetry ? "TrueForge Agent" : "UNKNOWN / UNAVAILABLE",
     },
