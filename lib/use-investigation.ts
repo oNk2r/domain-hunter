@@ -611,6 +611,17 @@ export interface RecordedStageTelemetry {
   evidenceReview: { proven: boolean; tool?: string };
 }
 
+function isValidResultString(str: unknown): boolean {
+  if (typeof str !== "string") return false;
+  const trimmed = str.trim();
+  if (trimmed.length === 0 || trimmed === "{}" || trimmed === "[]") return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("error") || lower.startsWith("fail") || lower.startsWith("exception")) {
+    return false;
+  }
+  return true;
+}
+
 function isValidSubagentResult(evData: Record<string, unknown>): boolean {
   // Check for error statuses
   const status = String(
@@ -632,8 +643,7 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
   }
 
   if (typeof rawOutput === "string") {
-    const trimmed = rawOutput.trim();
-    return trimmed.length > 0 && trimmed !== "{}" && trimmed !== "[]" && !trimmed.toLowerCase().startsWith("error");
+    return isValidResultString(rawOutput);
   }
 
   if (Array.isArray(rawOutput)) {
@@ -644,8 +654,7 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
     const obj = rawOutput as Record<string, unknown>;
     const content = obj.content || obj.text || obj.result || obj.domains || obj.findings;
     if (typeof content === "string") {
-      const trimmed = content.trim();
-      return trimmed.length > 0 && trimmed !== "{}" && trimmed !== "[]";
+      return isValidResultString(content);
     }
     if (Array.isArray(content)) {
       return content.length > 0;
@@ -656,7 +665,7 @@ function isValidSubagentResult(evData: Record<string, unknown>): boolean {
     if (nonStatusKeys.length === 0) return false;
     return nonStatusKeys.some((k) => {
       const v = obj[k];
-      if (typeof v === "string") return v.trim().length > 0 && v.trim() !== "{}" && v.trim() !== "[]";
+      if (typeof v === "string") return isValidResultString(v);
       if (Array.isArray(v)) return v.length > 0;
       if (typeof v === "object" && v !== null) return Object.keys(v).length > 0;
       return typeof v === "number" || typeof v === "boolean";
