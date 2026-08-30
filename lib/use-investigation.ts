@@ -635,28 +635,35 @@ export function extractStageTelemetryFromEvents(events?: RawTrueForgeEvent[]): R
     const evData = (ev.data && typeof ev.data === "object" ? ev.data : ev) as Record<string, unknown>;
     const type = String(ev.type || evData.type || "");
 
-    // 1. Explicit thread creation & subagent registration
+    // 1. Explicit thread creation & subagent registration (metadata mapping only)
     if (type === "thread.created") {
       const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
       const title = String(evData.title || (evData.agentInfo as Record<string, unknown>)?.name || "").toLowerCase();
       if (threadId) {
         if (title.includes("discovery") || title.includes("domain-discovery")) {
           threadStageMap.set(threadId, "discovery");
-          telemetry.discovery.proven = true;
         } else if (title.includes("triage") || title.includes("domain-triage")) {
           threadStageMap.set(threadId, "triage");
-          telemetry.triage.proven = true;
         } else if (title.includes("reviewer") || title.includes("evidence-review") || title.includes("evidence_review")) {
           threadStageMap.set(threadId, "evidenceReview");
-          telemetry.evidenceReview.proven = true;
         } else if (title.includes("intel") || title.includes("historical")) {
           threadStageMap.set(threadId, "historicalIntel");
-          telemetry.historicalIntel.proven = true;
         }
       }
     }
 
-    // 2. Tool calls and their associated thread scope
+    // 2. Thread completion with valid output
+    if (type === "thread.done") {
+      const threadId = String(evData.id || evData.thread_id || evData.threadId || "");
+      const threadStage = threadId ? threadStageMap.get(threadId) : undefined;
+      const stateObj = (evData.state || evData.output) as Record<string, unknown> | undefined;
+      const hasContent = Boolean(stateObj?.output || evData.output || evData.content);
+      if (threadStage && hasContent) {
+        telemetry[threadStage].proven = true;
+      }
+    }
+
+    // 3. Tool calls and their associated thread scope
     const toolNames = extractToolCallNames(evData);
     const eventThreadId = String(evData.thread_id || evData.threadId || "");
     const threadStage = eventThreadId ? threadStageMap.get(eventThreadId) : undefined;
